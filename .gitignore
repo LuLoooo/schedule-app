@@ -1,0 +1,15 @@
+# 项目内部数据（不对外）
+.workbuddy/
+
+# 系统文件
+.DS_Store
+
+# 设计交接物料（仅给设计师看，不进发布仓库）
+*.zip
+qr-code.png
+DESIGN_BRIEF.md
+README_FOR_DESIGNER.md
+HANDOVER.md
+
+# 依赖（本项目为纯静态，无需 node_modules）
+node_modules/

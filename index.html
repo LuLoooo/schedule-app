@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日程管家 · 日程与里程</title>
+  <meta name="theme-color" content="#6366f1">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="日程管家">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <script src="js/lib/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ==================== Header ==================== -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <span class="logo-icon">🗓</span>
+        <span class="logo-text">日程管家</span>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="mode-tabs">
+        <button :class="['mode-tab', { active: mode === 'schedule' }]" @click="mode = 'schedule'">📅 日程管理</button>
+        <button :class="['mode-tab', { active: mode === 'mileage' }]" @click="mode = 'mileage'">🚗 里程记录</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="account-chip" @click="openAccountModal()" :title="'当前账户：' + currentAccountName">
+        <span class="account-avatar" :style="{ backgroundColor: accountColor(currentAccountName) }">{{ (currentAccountName || '?').charAt(0) }}</span>
+        <span class="account-name">{{ viewScope === 'all' ? currentAccountName + ' · 全部' : currentAccountName }}</span>
+      </button>
+      <div class="scope-switch">
+        <button :class="['scope-btn', { active: viewScope === 'current' }]" @click="setViewScope('current')">本账户</button>
+        <button :class="['scope-btn', { active: viewScope === 'all' }]" @click="setViewScope('all')">全部账户</button>
+      </div>
+      <button class="btn btn-ghost" @click="showSettingsModal = true">⚙️<span class="btn-text"> 设置</span></button>
+      <button class="btn btn-ghost" @click="showExportModal = true">📤<span class="btn-text"> 导出</span></button>
+        <button class="btn btn-ghost" @click="showImportModal = true">📥<span class="btn-text"> 导入</span></button>
+        <button v-if="showInstallBtn" class="btn btn-ghost install-btn" @click="installApp()">📲<span class="btn-text"> 安装</span></button>
+      </div>
+  </header>
+
+  <!-- ==================== NL Input Bar ==================== -->
+  <section class="nl-section">
+    <div class="nl-container">
+      <div class="nl-title">
+        <span class="nl-icon">✨</span>
+        <span>智能输入（日程 + 里程自动同步）</span>
+      </div>
+      <div class="nl-input-row">
+        <textarea
+          v-model="nlInput"
+          class="nl-textarea"
+          :placeholder="nlPlaceholder"
+          rows="2"
+          @keydown.ctrl.enter="parseNaturalLanguage"
+          @keydown.meta.enter="parseNaturalLanguage"
+        ></textarea>
+        <button class="btn btn-primary nl-submit" @click="parseNaturalLanguage">
+          解析并添加
+        </button>
+      </div>
+      <div class="nl-hints">
+        <span class="hint-label">试试输入：</span>
+        <button class="hint-chip" @click="fillHint('今天七点吃早饭，八点开早会，九点写代码，晚上七点健身')">批量安排一天</button>
+        <button class="hint-chip" @click="fillHint('今天七点吃早饭，八点开会，删掉除了今天以外的所有行程')">添加+同步删除</button>
+        <button class="hint-chip" @click="fillHint('明天下午2点去南山拍摄，开了35公里')">日程+里程同步</button>
+        <button class="hint-chip" @click="fillHint('删掉除了今天以外的所有行程')">保留今天删其他</button>
+        <button class="hint-chip" @click="fillHint('删除所有日程')">清空所有</button>
+      </div>
+
+      <!-- Parse Results -->
+      <div v-if="parseResults.length" class="parse-results">
+        <div class="parse-results-title">解析结果（确认后执行）：</div>
+        <div v-for="(r, i) in parseResults" :key="i" class="parse-result-item" :class="{ 'result-item-delete': r.type === 'delete' }">
+          <span class="result-type-badge" :class="'badge-' + r.type">{{ r.type === 'schedule' ? '日程' : r.type === 'mileage' ? '里程' : r.type === 'delete' ? '删除' : '建议' }}</span>
+          <span class="result-desc">{{ r.description_text }}</span>
+          <button v-if="r.type === 'delete'" class="btn btn-sm btn-danger" @click="confirmResult(r, i)">确认删除</button>
+          <button v-else-if="r.type !== 'suggestion'" class="btn btn-sm btn-outline" @click="confirmResult(r, i)">✓ 添加</button>
+        </div>
+        <button class="btn btn-sm btn-primary" @click="confirmAllResults">全部确认</button>
+        <button class="btn btn-sm btn-ghost" @click="parseResults = []">清除</button>
+      </div>
+
+      <!-- Suggestions -->
+      <div v-if="suggestions.length" class="suggestions-box">
+        <div class="suggestions-title">🕐 为您找到以下空闲时段：</div>
+        <div v-for="(s, i) in suggestions" :key="i" class="suggestion-item">
+          <div class="suggestion-info">
+            <span class="suggestion-date">{{ s.dateLabel }}</span>
+            <span class="suggestion-time">{{ s.start }} - {{ s.end }}</span>
+            <span class="suggestion-duration">{{ s.durationLabel }}</span>
+          </div>
+          <button class="btn btn-sm btn-primary" @click="acceptSuggestion(s)">安排这个时段</button>
+        </div>
+        <button class="btn btn-sm btn-ghost" @click="suggestions = []">关闭建议</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== Schedule Mode ==================== -->
+  <main v-if="mode === 'schedule'" class="main-content">
+
+    <!-- View Toolbar -->
+    <div class="view-toolbar">
+      <div class="view-switcher">
+        <button :class="['view-btn', { active: view === 'day' }]" @click="view = 'day'">日</button>
+        <button :class="['view-btn', { active: view === 'week' }]" @click="view = 'week'">周</button>
+        <button :class="['view-btn', { active: view === 'month' }]" @click="view = 'month'">月</button>
+      </div>
+      <div class="date-nav">
+        <button class="btn btn-icon" @click="navigateDate(-1)">‹</button>
+        <span class="current-date-label">{{ currentDateLabel }}</span>
+        <button class="btn btn-icon" @click="navigateDate(1)">›</button>
+        <button class="btn btn-sm btn-outline" @click="goToday">今天</button>
+      </div>
+      <div class="toolbar-right">
+        <span class="event-count">共 {{ filteredEvents.length }} 项日程</span>
+      </div>
+    </div>
+
+    <!-- Category Filter -->
+    <div class="category-filter">
+      <button
+        v-for="c in categoryFilterOptions"
+        :key="c.key"
+        :class="['category-chip', { active: currentCategoryFilter === c.key }]"
+        :style="c.key !== 'all' ? { '--chip-color': NLP.CATEGORY_COLORS[c.key] } : {}"
+        @click="currentCategoryFilter = c.key"
+      >{{ c.label }}</button>
+      <button class="cat-manage-btn" @click="openCategoryModal()" title="管理分类">⚙ 分类</button>
+    </div>
+
+    <!-- Day View -->
+    <div v-if="view === 'day'" class="calendar-day-view">
+      <div class="day-header">
+        <div class="day-header-date">{{ formatDayHeader(currentDate) }}</div>
+        <div class="day-header-weekday">{{ formatWeekday(currentDate) }}</div>
+      </div>
+      <div class="day-timeline">
+        <div class="day-body">
+          <div class="day-labels">
+            <div class="day-label" v-for="h in 24" :key="h - 1" :style="{ height: hourPx + 'px' }">{{ String(h - 1).padStart(2, '0') }}:00</div>
+          </div>
+          <div class="day-content" :style="{ '--hour-px': hourPx + 'px', height: (24 * hourPx) + 'px' }" @click="dayQuickAdd($event, currentDate)">
+            <div
+              v-for="ev in dayPositioned"
+              :key="ev.id"
+              class="day-event"
+              :class="{ 'day-event-allday': ev.allDay }"
+              :style="dayEventStyle(ev)"
+              @click.stop="editEvent(ev)"
+            >
+              <div class="day-event-time">{{ ev.startTime }} - {{ ev.endTime }}</div>
+              <div class="day-event-title">{{ ev.title }}</div>
+              <span class="event-account-tag" v-if="viewScope === 'all' && ev._accountName" :style="{ backgroundColor: accountColor(ev._accountName) }">{{ ev._accountName }}</span>
+              <span class="event-category" :style="{ backgroundColor: ev.color }" v-if="ev.category && ev.category !== '其他'">{{ ev.category }}</span>
+              <div v-if="ev.location" class="day-event-location">📍 {{ ev.location }}</div>
+            </div>
+            <div v-if="!dayPositioned.length" class="day-empty">暂无日程，点击空白处快速添加</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Week View -->
+    <div v-if="view === 'week'" class="calendar-week-view">
+      <div class="week-grid">
+        <div class="week-time-col">
+          <div class="week-corner"></div>
+          <div class="week-time-label" v-for="h in 24" :key="h - 1" :style="{ height: hourPx + 'px' }">{{ String(h - 1).padStart(2, '0') }}:00</div>
+        </div>
+        <div v-for="(day, di) in weekDays" :key="di" class="week-day-col" :class="{ today: isSameDay(day.date, new Date()) }">
+          <div class="week-day-header">
+            <div class="week-day-name">{{ day.weekdayShort }}</div>
+            <div class="week-day-num">{{ day.date.getDate() }}</div>
+          </div>
+          <div class="week-day-body" :style="{ '--hour-px': hourPx + 'px', height: (24 * hourPx) + 'px' }" @click="weekQuickAdd($event, day.date)">
+            <div
+              v-for="ev in weekPositioned[di]"
+              :key="ev.id"
+              class="week-event"
+              :class="{ 'week-event-allday': ev.allDay }"
+              :style="weekEventStyle(ev)"
+              @click.stop="editEvent(ev)"
+            >
+              <div class="week-event-time">{{ ev.startTime }}</div>
+              <div class="week-event-title">{{ ev.title }}</div>
+              <span class="event-account-tag" v-if="viewScope === 'all' && ev._accountName" :style="{ backgroundColor: accountColor(ev._accountName) }">{{ ev._accountName }}</span>
+              <span class="week-event-category" :style="{ backgroundColor: ev.color }" v-if="ev.category && ev.category !== '其他'">{{ ev.category }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Month View -->
+    <div v-if="view === 'month'" class="calendar-month-view">
+      <div class="month-weekdays">
+        <div v-for="w in ['周一','周二','周三','周四','周五','周六','周日']" :key="w" class="month-weekday-cell">{{ w }}</div>
+      </div>
+      <div class="month-grid">
+        <div
+          v-for="(day, i) in monthDays"
+          :key="i"
+          class="month-day-cell"
+          :class="{ 'other-month': !day.currentMonth, today: isSameDay(day.date, new Date()) }"
+          @click="selectDay(day.date)"
+        >
+          <div class="month-day-num">{{ day.date.getDate() }}</div>
+          <div class="month-events">
+            <div
+              v-for="ev in day.events.slice(0, 3)"
+              :key="ev.id"
+              class="month-event-dot"
+              :style="{ borderLeftColor: ev.color }"
+              @click.stop="editEvent(ev)"
+            >
+              <span class="month-event-time">{{ ev.startTime }}</span>
+              <span class="month-event-title">{{ ev.title }}</span>
+              <span class="month-event-cat" v-if="ev.category && ev.category !== '其他'" :style="{ color: ev.color }">{{ ev.category }}</span>
+              <span class="month-event-acc" v-if="viewScope === 'all' && ev._accountName" :style="{ color: accountColor(ev._accountName) }">·{{ ev._accountName }}</span>
+            </div>
+            <div v-if="day.events.length > 3" class="month-more">+{{ day.events.length - 3 }} 更多</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== Mileage Mode ==================== -->
+  <main v-if="mode === 'mileage'" class="main-content">
+
+    <div class="view-toolbar">
+      <div class="view-switcher">
+        <button :class="['view-btn', { active: mileageView === 'day' }]" @click="mileageView = 'day'">日</button>
+        <button :class="['view-btn', { active: mileageView === 'week' }]" @click="mileageView = 'week'">周</button>
+        <button :class="['view-btn', { active: mileageView === 'month' }]" @click="mileageView = 'month'">月</button>
+      </div>
+      <div class="date-nav">
+        <button class="btn btn-icon" @click="navigateMileageDate(-1)">‹</button>
+        <span class="current-date-label">{{ mileageDateLabel }}</span>
+        <button class="btn btn-icon" @click="navigateMileageDate(1)">›</button>
+      </div>
+      <div class="toolbar-right">
+        <span class="event-count">共 {{ filteredMileages.length }} 条记录</span>
+      </div>
+    </div>
+
+    <!-- Mileage Stats -->
+    <div class="mileage-stats">
+      <div class="stat-card">
+        <div class="stat-icon">🚗</div>
+        <div class="stat-value">{{ mileageStats.totalKm }}<span class="stat-unit">km</span></div>
+        <div class="stat-label">{{ mileageStats.periodLabel }}总里程</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📊</div>
+        <div class="stat-value">{{ mileageStats.avgKm }}<span class="stat-unit">km</span></div>
+        <div class="stat-label">日均里程</div>
+      </div>
+      <div class="stat-card stat-card-cost">
+        <div class="stat-icon">⛽</div>
+        <div class="stat-value">¥{{ mileageStats.totalCost }}</div>
+        <div class="stat-label">{{ mileageStats.periodLabel }}油费估算</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📍</div>
+        <div class="stat-value">{{ mileageStats.locationCount }}</div>
+        <div class="stat-label">拍摄地点数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔥</div>
+        <div class="stat-value">{{ mileageStats.maxKm }}<span class="stat-unit">km</span></div>
+        <div class="stat-label">单次最高</div>
+      </div>
+    </div>
+
+    <!-- Mileage Bar Chart -->
+    <div class="mileage-chart-section">
+      <div class="chart-title">{{ mileageStats.periodLabel }}里程趋势</div>
+      <div class="mileage-chart">
+        <div v-for="(bar, i) in mileageChartData" :key="i" class="chart-bar-group">
+          <div class="chart-bar-container">
+            <div class="chart-bar" :style="{ height: bar.percent + '%' }">
+              <span class="chart-bar-value" v-if="bar.km > 0">{{ bar.km }}</span>
+            </div>
+          </div>
+          <div class="chart-bar-label">{{ bar.label }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mileage List -->
+    <div class="mileage-list-section">
+      <div class="section-header">
+        <h3>里程明细</h3>
+      </div>
+      <div class="mileage-list">
+        <div v-if="filteredMileages.length === 0" class="empty-state">
+          <div class="empty-icon">🗺️</div>
+          <div class="empty-text">暂无里程记录，请在上方输入框中添加</div>
+        </div>
+        <div v-for="m in filteredMileages" :key="m.id" class="mileage-item">
+          <div class="mileage-item-date">
+            <div class="mileage-date-day">{{ formatDateDay(m.date) }}</div>
+            <div class="mileage-date-weekday">{{ formatWeekday(m.date) }}</div>
+          </div>
+          <div class="mileage-item-info">
+            <div class="mileage-location">📍 {{ m.location }}</div>
+            <div v-if="m.notes" class="mileage-notes">{{ m.notes }}</div>
+          </div>
+          <div class="mileage-item-value">
+            <span class="mileage-km">{{ m.km }}</span>
+            <span class="mileage-unit">km</span>
+          </div>
+          <div class="mileage-item-cost">¥{{ calcMileageCost(m.km) }}</div>
+          <button class="btn btn-icon-sm btn-danger" @click="deleteMileage(m.id)">✕</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== Event Edit Modal ==================== -->
+  <div v-if="showEventModal" class="modal-overlay" @click.self="showEventModal = false">
+    <div class="modal modal-event">
+      <div class="modal-header">
+        <h3>{{ editingEvent.id ? '编辑日程' : '新建日程' }}</h3>
+        <button class="modal-close" @click="showEventModal = false">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>标题</label>
+          <input type="text" v-model="editingEvent.title" placeholder="日程标题" class="form-input">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>日期</label>
+            <input type="date" v-model="editingEvent.dateStr" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>开始时间</label>
+            <input type="time" v-model="editingEvent.startTime" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>结束时间</label>
+            <input type="time" v-model="editingEvent.endTime" class="form-input">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>地点</label>
+          <input type="text" v-model="editingEvent.location" placeholder="地点（可选）" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>分类</label>
+          <select v-model="editingEvent.category" class="form-input" @change="onCategoryChange">
+            <option v-for="c in categories" :key="c.name" :value="c.name">{{ c.name }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>颜色</label>
+          <div class="color-picker">
+            <button
+              v-for="c in colorOptions"
+              :key="c"
+              :class="['color-option', { active: editingEvent.color === c }]"
+              :style="{ backgroundColor: c }"
+              @click="editingEvent.color = c"
+            ></button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <textarea v-model="editingEvent.description" placeholder="备注（可选）" class="form-input" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button v-if="editingEvent.id" class="btn btn-danger" @click="deleteEvent(editingEvent.id)">删除</button>
+        <div class="spacer"></div>
+        <button class="btn btn-ghost" @click="showEventModal = false">取消</button>
+        <button class="btn btn-primary" @click="saveEvent">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Export Modal ==================== -->
+  <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>导出数据</h3>
+        <button class="modal-close" @click="showExportModal = false">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>导出范围</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" v-model="exportConfig.range" value="week"> 按周导出
+            </label>
+            <label class="radio-label">
+              <input type="radio" v-model="exportConfig.range" value="month"> 按月导出
+            </label>
+            <label class="radio-label">
+              <input type="radio" v-model="exportConfig.range" value="all"> 全部数据
+            </label>
+          </div>
+        </div>
+        <div v-if="exportConfig.range === 'week'" class="form-group">
+          <label>选择周</label>
+          <input type="week" v-model="exportConfig.weekValue" class="form-input">
+        </div>
+        <div v-if="exportConfig.range === 'month'" class="form-group">
+          <label>选择月</label>
+          <input type="month" v-model="exportConfig.monthValue" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>导出内容</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="exportConfig.includeSchedule"> 日程数据
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="exportConfig.includeMileage"> 里程数据
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>导出格式</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" v-model="exportConfig.format" value="json"> JSON
+            </label>
+            <label class="radio-label">
+              <input type="radio" v-model="exportConfig.format" value="csv"> CSV (Excel可打开)
+            </label>
+            <label class="radio-label">
+              <input type="radio" v-model="exportConfig.format" value="html"> HTML 报表
+            </label>
+          </div>
+        </div>
+        <div v-if="exportPreview" class="export-preview">
+          <div class="export-preview-title">导出预览：</div>
+          <div class="export-preview-stats">
+            <span>📅 {{ exportPreview.eventCount }} 条日程</span>
+            <span>🚗 {{ exportPreview.mileageCount }} 条里程</span>
+            <span>🛣️ {{ exportPreview.totalKm }} km</span>
+            <span>⛽ ¥{{ exportPreview.totalCost }} 油费</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" @click="showExportModal = false">取消</button>
+        <button class="btn btn-primary" @click="doExport">导出文件</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Import Modal ==================== -->
+  <div v-if="showImportModal" class="modal-overlay" @click.self="showImportModal = false">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>导入数据</h3>
+        <button class="modal-close" @click="showImportModal = false">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="import-zone" @click="$refs.importFile.click()" @dragover.prevent @drop.prevent="handleImportDrop">
+          <div class="import-icon">📥</div>
+          <div class="import-text">点击或拖拽 JSON 文件到此处</div>
+          <div class="import-hint">支持之前导出的 JSON 格式</div>
+          <input type="file" ref="importFile" accept=".json" style="display:none" @change="handleImportFile">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" @click="showImportModal = false">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Settings Modal ==================== -->
+  <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>⛽ 油费设置</h3>
+        <button class="modal-close" @click="showSettingsModal = false">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>油价（元/升）</label>
+          <input type="number" step="0.01" min="0" v-model.number="oilSettings.pricePerLiter" class="form-input" placeholder="例如 8.0">
+        </div>
+        <div class="form-group">
+          <label>车辆油耗（升/百公里）</label>
+          <input type="number" step="0.1" min="0" v-model.number="oilSettings.consumptionPer100km" class="form-input" placeholder="例如 8.0">
+        </div>
+        <div class="oil-cost-preview">
+          <div class="oil-cost-label">每公里油费成本：</div>
+          <div class="oil-cost-value">¥{{ costPerKm.toFixed(4) }}/km</div>
+          <div class="oil-cost-hint">油费 = 里程 × 油价 × 油耗 ÷ 100</div>
+          <div class="oil-cost-example">示例：35 km → ¥{{ (35 * costPerKm).toFixed(2) }}</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" @click="showSettingsModal = false">取消</button>
+        <button class="btn btn-primary" @click="saveOilSettings">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== Toast ==================== -->
+  <transition name="toast">
+    <div v-if="toast.show" class="toast" :class="'toast-' + toast.type">
+      {{ toast.message }}
+    </div>
+  </transition>
+
+  <!-- ==================== 登录 / 选账户界面 ==================== -->
+  <div class="login-overlay" v-if="showLogin">
+    <div class="login-card">
+      <div class="login-logo">🗓️</div>
+      <h1 class="login-title">日程管家</h1>
+      <p class="login-sub">选择一个账户开始</p>
+
+      <div class="account-list">
+        <button v-for="a in accountList" :key="a.id" class="account-item" @click="enterAccount(a.id)">
+          <span class="account-item-avatar" :style="{ backgroundColor: accountColor(a.name) }">{{ a.name.charAt(0) }}</span>
+          <span class="account-item-name">{{ a.name }}</span>
+          <span class="account-item-arrow">›</span>
+        </button>
+      </div>
+
+      <div class="login-create">
+        <input
+          v-model="newAccountName"
+          class="login-input"
+          placeholder="输入新账户名称"
+          @keyup.enter="createAccount()"
+        />
+        <button class="btn btn-primary" @click="createAccount()">+ 新建账户</button>
+      </div>
+      <p v-if="accountError" class="login-error">{{ accountError }}</p>
+    </div>
+  </div>
+
+  <!-- ==================== 切换账户弹窗 ==================== -->
+  <div class="modal-overlay" v-if="showAccountModal" @click.self="closeAccountModal()">
+    <div class="modal account-modal">
+      <div class="modal-header">
+        <h3>切换账户</h3>
+        <button class="modal-close" @click="closeAccountModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="account-list">
+          <div
+            v-for="a in accountList"
+            :key="a.id"
+            class="account-item"
+            :class="{ active: a.id === currentAccountId, renaming: renamingId === a.id }"
+            @click="renamingId !== a.id && switchAccount(a.id)"
+          >
+            <span class="account-item-avatar" :style="{ backgroundColor: accountColor(a.name) }">{{ a.name.charAt(0) }}</span>
+            <template v-if="renamingId === a.id">
+              <input
+                v-model="renameValue"
+                class="rename-input"
+                @click.stop
+                @keyup.enter="saveRename()"
+                @keyup.esc="cancelRename()"
+              />
+              <button class="account-rename-ok" @click.stop="saveRename()" title="保存">✓</button>
+              <button class="account-rename-cancel" @click.stop="cancelRename()" title="取消">✕</button>
+            </template>
+            <template v-else>
+              <span class="account-item-name">{{ a.name }}</span>
+              <span v-if="a.id === currentAccountId" class="account-item-badge">当前</span>
+              <button class="account-rename" @click.stop="startRename(a.id, a.name)" title="重命名">✎</button>
+              <button class="account-del" @click.stop="deleteAccount(a.id)" title="删除账户">🗑</button>
+            </template>
+          </div>
+        </div>
+
+        <div class="login-create">
+          <input
+            v-model="newAccountName"
+            class="login-input"
+            placeholder="输入新账户名称"
+            @keyup.enter="createAccount()"
+          />
+          <button class="btn btn-primary" @click="createAccount()">+ 新建账户</button>
+        </div>
+        <p v-if="accountError" class="login-error">{{ accountError }}</p>
+
+        <button class="btn btn-ghost logout-btn" @click="logout()">退出登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 分类管理弹窗 ==================== -->
+  <div v-if="showCategoryModal" class="modal-overlay" @click.self="showCategoryModal = false">
+    <div class="modal category-modal">
+      <div class="modal-header">
+        <h3>分类管理</h3>
+        <button class="modal-close" @click="showCategoryModal = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="cat-list">
+          <div v-for="c in categories" :key="c.name" class="cat-item" :class="{ 'cat-locked': c.name === '其他' }">
+            <span class="cat-swatch" :style="{ backgroundColor: c.color }"></span>
+            <span class="cat-name">{{ c.name }}</span>
+            <span class="cat-kw" v-if="c.keywords && c.keywords.length">{{ c.keywords.join('、') }}</span>
+            <button class="cat-edit" @click="editCategory(c)" title="编辑">✎</button>
+            <button class="cat-del" v-if="c.name !== '其他'" @click="deleteCategory(c)" title="删除">🗑</button>
+          </div>
+        </div>
+
+        <div class="cat-form">
+          <div class="form-group">
+            <label>{{ catForm.oldName ? '编辑分类' : '新增分类' }}</label>
+            <input v-model="catForm.name" class="form-input" :placeholder="catForm.oldName ? catForm.oldName : '分类名称，如：开会'" @keyup.enter="saveCategory()" />
+          </div>
+          <div class="form-group cat-color-row">
+            <label>颜色</label>
+            <input type="color" v-model="catForm.color" class="cat-color-input" />
+            <div class="cat-swatches">
+              <button v-for="col in colorOptions" :key="col" class="cat-swatch-btn" :style="{ backgroundColor: col }" @click="catForm.color = col"></button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>自动识别关键词（用、或逗号分隔）</label>
+            <input v-model="catForm.keywordsText" class="form-input" placeholder="如：开会、会议、碰头" />
+          </div>
+          <p v-if="categoryError" class="login-error">{{ categoryError }}</p>
+          <div class="cat-form-actions">
+            <button class="btn btn-primary" @click="saveCategory()">{{ catForm.oldName ? '保存修改' : '添加分类' }}</button>
+            <button class="btn btn-ghost" v-if="catForm.oldName" @click="openCategoryModal()">取消编辑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 删除分类弹窗（选择归属目标） ==================== -->
+  <div v-if="showDeleteCategoryModal" class="modal-overlay" @click.self="cancelDeleteCategory()">
+    <div class="modal delete-cat-modal">
+      <div class="modal-header">
+        <h3>删除分类</h3>
+        <button class="modal-close" @click="cancelDeleteCategory()">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="del-cat-tip">
+          确定要删除分类
+          <span class="del-cat-name" :style="{ color: deletingCategory && deletingCategory.color }">「{{ deletingCategory && deletingCategory.name }}」</span>
+          吗？该分类下的日程将归入你选择的分类：
+        </p>
+        <div class="form-group">
+          <label>把这些日程归入</label>
+          <select v-model="reassignTarget" class="form-input">
+            <option v-for="c in categories.filter(c => !deletingCategory || c.name !== deletingCategory.name)" :key="c.name" :value="c.name">{{ c.name }}</option>
+          </select>
+        </div>
+        <div class="cat-form-actions">
+          <button class="btn btn-danger" @click="confirmDeleteCategory()">确认删除</button>
+          <button class="btn btn-ghost" @click="cancelDeleteCategory()">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/nlp.js"></script>
+<script src="js/scheduler.js"></script>
+<script src="js/exporter.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
