@@ -144,8 +144,8 @@ const NLP = {
     text = text.replace(/[，,、]+/g, B).replace(/\s+/g, B);
 
     // 3) 句中出现的时间段词（上午/下午/晚上…）前补边界
-    //    前一个字若为"天"（今天/明天…）或已是边界，则不拆，避免"今天下午"被切开
-    text = text.replace(/([^\u0001天])(上午|下午|中午|晚上|早上|早晨|傍晚)/g, '$1' + B + '$2');
+    //    前一个字若为"天"（今天/明天…）、"号/日"（21号上午…）或已是边界，则不拆，避免"今天下午/21号上午"被切开
+    text = text.replace(/([^\u0001天号日])(上午|下午|中午|晚上|早上|早晨|傍晚)/g, '$1' + B + '$2');
     // 4) 句中出现的相对日期（今天/明天…）前补边界（前一字非边界时）
     text = text.replace(/([^\u0001])(今天|明天|后天|大后天|昨天|前天)/g, '$1' + B + '$2');
 
@@ -159,7 +159,7 @@ const NLP = {
 
     const dateStarters = /^(这|下|下下)?(?:周|星期|礼拜)[一二三四五六日天]/;
     const relDateStarters = /^(今天|明天|后天|大后天|昨天|前天)/;
-    const absDateStarters = /^\d{1,2}月\d{1,2}[日号]/;
+    const absDateStarters = /^(?:\d{1,2}月)?(?:\d{1,2}|[零一二两三四五六七八九十]{1,3})\s*[日号](?![线楼门栋室号院区座])/;
     const timeStarters = /^(上午|下午|晚上|早上|早晨|中午|傍晚|全天)/;
     // 纯时间点开头：八点 / 9点 / 十点半 / 10:00 / 10：30 / 上午9点
     // 用中文数字或阿拉伯数字均可，避免误判"开会"这种词（无数字+点/冒号）
@@ -721,6 +721,24 @@ const NLP = {
           if (date < today) date.setFullYear(date.getFullYear() + 1);
           remaining = remaining.replace(dateMatch[0], '');
         }
+        // 单说"N号 / N日"（无月份）→ 当月N号（支持中文数字"二十一号"）
+        // 排除"3号线 / 5号楼"这类非日期用法
+        else {
+          const bareDayMatch = remaining.match(/(?:^|[^\d月])(\d{1,2}|[零一二两三四五六七八九十]{1,3})\s*[日号](?![线楼门栋室号院区座])/);
+          if (bareDayMatch) {
+            const day = /\d/.test(bareDayMatch[1])
+              ? parseInt(bareDayMatch[1])
+              : this.chineseToNumber(bareDayMatch[1]);
+            if (day >= 1 && day <= 31) {
+              date = new Date(today.getFullYear(), today.getMonth(), day);
+              // 只替换"N号"本身，保留前面误捕获的那个字符
+              remaining = remaining.replace(
+                bareDayMatch[0],
+                bareDayMatch[0].replace(new RegExp(bareDayMatch[1] + '\\s*[日号]'), '')
+              );
+            }
+          }
+        }
       }
     }
 
@@ -867,14 +885,14 @@ const NLP = {
       }
     }
 
-    // 时间段（无具体时间）
+    // 时间段（无具体时间）—— 上午/下午默认对应工作时间
     if (/上午|早上|早晨/.test(remaining)) {
-      start = '09:00';
-      end = '12:00';
+      start = '08:30';
+      end = '11:30';
       remaining = remaining.replace(/上午|早上|早晨/g, '');
     } else if (/下午/.test(remaining)) {
-      start = '14:00';
-      end = '18:00';
+      start = '13:30';
+      end = '17:00';
       remaining = remaining.replace(/下午/g, '');
     } else if (/晚上|傍晚/.test(remaining)) {
       start = '19:00';
