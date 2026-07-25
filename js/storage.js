@@ -420,6 +420,31 @@ const Storage = {
     }
   },
 
+  /**
+   * 重命名常用地点，并同步更新引用该地点的日程与里程（当前账户）。
+   * @param {string} oldName
+   * @param {string} newName
+   * @returns {number} 受影响的记录条数
+   */
+  renameLocationEverywhere(oldName, newName) {
+    let changed = 0;
+    const evs = this.getEvents();
+    let evDirty = false;
+    evs.forEach(e => {
+      if (e.location === oldName) { e.location = newName; changed++; evDirty = true; }
+    });
+    if (evDirty) this.saveEvents(evs);
+
+    const mls = this.getMileages();
+    let mlDirty = false;
+    mls.forEach(m => {
+      if (m.location === oldName) { m.location = newName; changed++; mlDirty = true; }
+    });
+    if (mlDirty) this.saveMileages(mls);
+
+    return changed;
+  },
+
   // ==================== Import / Export ====================
 
   exportAllData() {

@@ -1720,3 +1720,18 @@ textarea { resize: vertical; }
   font-size: 12px; padding: 4px 10px; border-radius: 14px; cursor: pointer;
 }
 .loc-save-btn:hover { background: rgba(99,102,241,0.08); }
+
+/* 事件弹窗：地点下拉 + 新增内联输入 */
+.loc-add-inline { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.loc-add-inline .form-input { flex: 1; }
+
+/* 常用地点管理：改名内联编辑 + 改名/删除按钮 */
+.loc-edit-input { flex: 1; }
+.loc-edit, .loc-save, .loc-cancel {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+}
+.loc-edit:hover { background: #e0e7ff; }
+.loc-save { color: #16a34a; }
+.loc-save:hover { background: #dcfce7; }
+.loc-cancel:hover { background: #fee2e2; }

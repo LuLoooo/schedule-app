@@ -360,27 +360,16 @@
         </div>
         <div class="form-group">
           <label>地点</label>
-          <input type="text" v-model="editingEvent.location" placeholder="地点（可选，可下拉选择常用地点）" class="form-input" list="frequent-locations">
-          <datalist id="frequent-locations">
-            <option v-for="loc in locations" :key="loc" :value="loc"></option>
-          </datalist>
-          <!-- 常用地点快捷选择 -->
-          <div class="loc-chips" v-if="locations.length">
-            <button
-              type="button"
-              v-for="loc in locations"
-              :key="loc"
-              class="loc-chip"
-              :class="{ active: editingEvent.location === loc }"
-              @click="editingEvent.location = loc"
-            >{{ loc }}</button>
+          <select class="form-input" :value="editingEvent.location" @change="onLocationSelect">
+            <option value="">（无地点）</option>
+            <option v-for="loc in locations" :key="loc" :value="loc">{{ loc }}</option>
+            <option value="__add__">➕ 新增地点…</option>
+          </select>
+          <div v-if="showAddLocInput" class="loc-add-inline">
+            <input type="text" v-model="newLocInput" class="form-input" placeholder="输入新地点名称" @keyup.enter="confirmAddLocation()">
+            <button type="button" class="btn btn-primary btn-sm" @click="confirmAddLocation()">保存</button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="showAddLocInput=false; editingEvent.location=''">取消</button>
           </div>
-          <button
-            type="button"
-            class="loc-save-btn"
-            v-if="editingEvent.location && editingEvent.location.trim() && !locations.includes(editingEvent.location.trim())"
-            @click="addCurrentLocationToFrequent()"
-          >＋ 存为常用地点</button>
         </div>
         <div class="form-group">
           <label>分类</label>
@@ -708,8 +697,16 @@
         <div class="loc-list" v-if="locations.length">
           <div v-for="loc in locations" :key="loc" class="loc-item">
             <span class="loc-dot">📍</span>
-            <span class="loc-name">{{ loc }}</span>
-            <button class="loc-del" @click="deleteLocation(loc)" title="删除">🗑</button>
+            <template v-if="locEditName === loc">
+              <input v-model="locEditValue" class="form-input loc-edit-input" @keyup.enter="saveEditLocation()" @keyup.esc="cancelEditLocation()" />
+              <button class="loc-save" @click="saveEditLocation()" title="保存">✓</button>
+              <button class="loc-cancel" @click="cancelEditLocation()" title="取消">✕</button>
+            </template>
+            <template v-else>
+              <span class="loc-name">{{ loc }}</span>
+              <button class="loc-edit" @click="startEditLocation(loc)" title="改名">✎</button>
+              <button class="loc-del" @click="deleteLocation(loc)" title="删除">🗑</button>
+            </template>
           </div>
         </div>
         <p v-else class="loc-empty">还没有常用地点，在下面添加一条吧。</p>

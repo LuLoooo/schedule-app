@@ -78,6 +78,14 @@ createApp({
       locForm: { name: '' },
       locError: '',
 
+      // 常用地点改名（弹窗内联编辑）
+      locEditName: '',
+      locEditValue: '',
+
+      // 事件弹窗地点下拉 - 新增地点内联输入
+      showAddLocInput: false,
+      newLocInput: '',
+
       // 删除分类弹窗（让用户选择把该分类下的日程归到哪一类）
       showDeleteCategoryModal: false,
       deletingCategory: null,
@@ -523,6 +531,7 @@ createApp({
       if (window.NLP) NLP.setCategories(this.categories);
       // 加载本账户常用地点
       this.locations = Storage.getLocations();
+      if (window.NLP) NLP.setLocations(this.locations);
     },
 
     // 账户头像颜色（按名称哈希取色板）
@@ -1137,15 +1146,75 @@ createApp({
       if (this.locations.includes(v)) { this.locError = '该地点已存在'; return; }
       Storage.saveLocations([...this.locations, v]);
       this.locations = Storage.getLocations();
+      if (window.NLP) NLP.setLocations(this.locations);
       this.locForm.name = '';
       this.showToast('已添加常用地点', 'success');
+    },
+
+    // 开始改名（弹窗内联编辑）
+    startEditLocation(loc) {
+      this.locEditName = loc;
+      this.locEditValue = loc;
+    },
+    cancelEditLocation() {
+      this.locEditName = '';
+      this.locEditValue = '';
+    },
+    saveEditLocation() {
+      const oldName = this.locEditName;
+      const newName = (this.locEditValue || '').trim();
+      if (!newName) { this.showToast('名称不能为空', 'error'); return; }
+      if (newName !== oldName && this.locations.includes(newName)) {
+        this.showToast('该地点已存在', 'error'); return;
+      }
+      // 更新地点列表
+      const list = this.locations.map(x => x === oldName ? newName : x);
+      Storage.saveLocations(list);
+      this.locations = Storage.getLocations();
+      if (window.NLP) NLP.setLocations(this.locations);
+      // 同步引用该地点的日程与里程
+      const n = Storage.renameLocationEverywhere(oldName, newName);
+      if (n > 0) this.events = this.loadEvents();
+      this.cancelEditLocation();
+      this.showToast(n > 0 ? `已改名并同步 ${n} 条记录` : '已改名', 'success');
     },
 
     deleteLocation(loc) {
       if (!confirm(`从常用地点中删除「${loc}」？（不影响已有日程）`)) return;
       Storage.saveLocations(this.locations.filter(x => x !== loc));
       this.locations = Storage.getLocations();
+      if (window.NLP) NLP.setLocations(this.locations);
       this.showToast('已删除', 'success');
+    },
+
+    // 事件弹窗地点下拉：选择处理
+    onLocationSelect(e) {
+      const val = e.target.value;
+      if (val === '__add__') {
+        this.editingEvent.location = '';
+        this.newLocInput = '';
+        this.showAddLocInput = true;
+      } else {
+        this.showAddLocInput = false;
+      }
+    },
+    confirmAddLocation() {
+      const v = (this.newLocInput || '').trim();
+      if (!v) { this.showToast('请输入地点名称', 'error'); return; }
+      if (this.locations.includes(v)) {
+        this.editingEvent.location = v;
+        this.showAddLocInput = false;
+        this.newLocInput = '';
+        this.showToast('该地点已存在', 'info');
+        return;
+      }
+      Storage.saveLocations([...this.locations, v]);
+      this.locations = Storage.getLocations();
+      if (window.NLP) NLP.setLocations(this.locations);
+      this.editingEvent.location = v;
+      this.showAddLocInput = false;
+      this.newLocInput = '';
+      this.showToast('已添加并选中', 'success');
     },
 
     // 把当前编辑中的地点存入常用地点（去重）

@@ -56,6 +56,19 @@ const NLP = {
     this._categoryOrder = order;
   },
 
+  // 运行时已保存常用地点（由 setLocations 根据当前账户地点列表重建），用于说话时自动联想归类
+  _savedLocations: [],
+
+  /**
+   * 用常用地点列表重建运行时匹配表（影响"提到已保存地点自动归类"）。
+   * @param {Array<string>} list
+   */
+  setLocations(list) {
+    this._savedLocations = Array.isArray(list)
+      ? list.map(x => (x || '').trim()).filter(Boolean)
+      : [];
+  },
+
   /**
    * 主解析入口
    * @param {string} input - 用户输入的自然语言
@@ -877,7 +890,20 @@ const NLP = {
     let location = '';
     let remaining = text;
 
-    // 地点在XXX / 地点：XXX
+    // 1. 命中已保存的常用地点（最长优先，支持"公司楼下"→"公司"这类包含匹配）
+    //    优先级最高：用户说话提到已保存地点时，自动把事件归类到该地点
+    if (Array.isArray(this._savedLocations) && this._savedLocations.length) {
+      const sorted = [...this._savedLocations].sort((a, b) => b.length - a.length);
+      for (const loc of sorted) {
+        if (loc && text.includes(loc)) {
+          location = loc;
+          remaining = text.replace(loc, '');
+          return { location, remaining };
+        }
+      }
+    }
+
+    // 2. 地点在XXX / 地点：XXX（显式标注）
     const explicitMatch = remaining.match(/地点[在：:]\s*(.+?)(?:[，,；;]|$)/);
     if (explicitMatch) {
       location = explicitMatch[1].trim();
@@ -885,7 +911,7 @@ const NLP = {
       return { location, remaining };
     }
 
-    // 介词 + 地点 +（活动词 / 时间词 / 标点）：在/到/去/从/往 X + 后续活动或时间
+    // 3. 介词 + 地点 +（活动词 / 时间词 / 标点）：在/到/去/从/往 X + 后续活动或时间
     const ACT = '拍摄|拍照|拍外景|拍|开会|开会讨论|开会评审|培训|出差|拜访|讨论|见面|碰面|上班|下班|健身|锻炼|工作|吃饭|约会|取景|布光|剪辑|排版|学习|考试|出发|回来|返回|回家|飞|喝|唱|按摩|理发|逛街|逛|玩|购物|旅游|看电影|看|做|进行|跑步|运动';
     const TIME = '上午|下午|晚上|早上|中午|傍晚|早晨|凌晨|明天|今天|后天|大后天|昨天|前天|周一|周二|周三|周四|周五|周六|周日|周几|周末|\\d+\\s*点|\\d+[:：]|点';
     const p = new RegExp('(?:在|到|去|从|往|离)\\s*([^\\s，,；;。、]+?)(?=(?:' + ACT + '|' + TIME + '|[，,。；;、]|$))');
