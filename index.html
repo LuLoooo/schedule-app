@@ -398,7 +398,7 @@
         </div>
         <div class="form-group">
           <label>地点</label>
-          <select class="form-input" :value="editingEvent.location" @change="onLocationSelect">
+          <select class="form-input" v-model="editingEvent.location" @change="onLocationSelect">
             <option value="">（无地点）</option>
             <option v-if="editingEvent.location && !locations.includes(editingEvent.location)" :value="editingEvent.location">📍 {{ editingEvent.location }}</option>
             <option v-for="loc in locations" :key="loc" :value="loc">{{ loc }}</option>

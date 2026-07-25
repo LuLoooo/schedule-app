@@ -215,7 +215,8 @@ const NLP = {
       // 同时生成里程记录和日程事件
       const mileage = this.parseMileage(text, baseDate);
       const schedule = this.createScheduleFromMileage(mileage, text, baseDate, lastEndHour);
-      return schedule ? [schedule, mileage] : [mileage];
+      // 里程信息统一挂在日程事件上（event.km），不再单独生成一条重复的里程记录
+      return schedule ? [schedule] : [mileage];
     } else if (mileageIntentNoKm) {
       // 用户希望记里程但未给公里数，生成占位记录提示补充
       const schedule = this.parseSchedule(text, baseDate, lastEndHour);

@@ -62,7 +62,7 @@ createApp({
       toast: { show: false, message: '', type: 'info' },
 
       // 应用版本信息（每按用户意见更新一次，count +1 并刷新时间 —— 见 MEMORY.md 约定）
-      appVersion: { count: 10, time: '7月25日 23:35' },
+      appVersion: { count: 11, time: '7月25日 23:48' },
 
       // 颜色选项
       colorOptions: ['#6366f1', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#14b8a6', '#10b981', '#ef4444'],
@@ -748,7 +748,10 @@ createApp({
 
     confirmResult(result, index) {
       if (result.type === 'schedule') {
+        // 分类不在现有列表中时，按内容核心词自动新建分类
+        this.ensureCategoryForResult(result);
         const event = {
+          id: Storage.generateId(),
           title: result.title,
           category: result.category || '其他',
           date: result.date,
@@ -762,19 +765,23 @@ createApp({
         };
         Storage.addEvent(event);
         this.autoSaveParsedLocations([result]);
+        // 让独立里程记录与事件同步（同 id 关联）
+        this.syncMileageForEvent(event);
         this.events = this.loadEvents();
+        this.mileages = Storage.getMileages();
         this.showToast('已添加日程：' + result.title, 'success');
         this.parseResults.splice(index, 1);
       } else if (result.type === 'mileage') {
-        const mileage = {
-          date: result.date,
-          location: result.location,
-          km: result.km,
-          notes: result.notes
-        };
-        Storage.addMileage(mileage);
-        this.mileages = Storage.getMileages();
-        this.showToast('已添加里程：' + result.location + ' ' + result.km + 'km', 'success');
+        if (result.km > 0) {
+          Storage.addMileage({
+            date: result.date,
+            location: result.location,
+            km: result.km,
+            notes: result.notes
+          });
+          this.mileages = Storage.getMileages();
+          this.showToast('已添加里程：' + result.location + ' ' + result.km + 'km', 'success');
+        }
         this.parseResults.splice(index, 1);
       } else if (result.type === 'delete') {
         // 执行删除，失败（用户取消）则不移除
@@ -861,7 +868,10 @@ createApp({
 
       for (const result of [...this.parseResults]) {
         if (result.type === 'schedule') {
-          Storage.addEvent({
+          // 分类不在现有列表中时，按内容核心词自动新建分类
+          this.ensureCategoryForResult(result);
+          const event = {
+            id: Storage.generateId(),
             title: result.title,
             category: result.category || '其他',
             date: result.date,
@@ -872,7 +882,10 @@ createApp({
             color: result.color,
             km: result.km || 0,
             description: this.buildEventDescription(result)
-          });
+          };
+          Storage.addEvent(event);
+          // 让独立里程记录与事件同步（同 id 关联）
+          this.syncMileageForEvent(event);
           scheduleAdded++;
         } else if (result.type === 'mileage') {
           Storage.addMileage({
@@ -1488,11 +1501,10 @@ createApp({
       this.showToast('已删除', 'success');
     },
 
-    // 事件弹窗地点下拉：选择处理
+    // 事件弹窗地点下拉：选择处理（地点值已由 v-model 自动写入 editingEvent.location）
     onLocationSelect(e) {
       const val = e.target.value;
       if (val === '__add__') {
-        this.editingEvent.location = '';
         this.newLocInput = '';
         this.showAddLocInput = true;
       } else {
@@ -1563,15 +1575,19 @@ createApp({
       };
 
       const accountId = this.editingEvent._accountId || this.currentAccountId;
+      let saved;
       if (this.editingEvent.id) {
-        Storage.updateEvent(this.editingEvent.id, event, accountId);
+        saved = Storage.updateEvent(this.editingEvent.id, event, accountId) || { ...event, id: this.editingEvent.id };
         this.showToast('日程已更新', 'success');
       } else {
-        Storage.addEvent(event, accountId);
+        saved = Storage.addEvent(event, accountId);
         this.showToast('日程已添加', 'success');
       }
 
+      // 让关联的里程记录与事件同步（同 id）
+      this.syncMileageForEvent(saved);
       this.events = this.loadEvents();
+      this.mileages = Storage.getMileages();
       this.showEventModal = false;
     },
 
@@ -1580,7 +1596,10 @@ createApp({
         const ev = this.events.find(e => e.id === id);
         const accountId = ev ? ev._accountId : undefined;
         Storage.deleteEvent(id, accountId);
+        // 删除关联的同 id 里程记录
+        Storage.deleteMileage(id);
         this.events = this.loadEvents();
+        this.mileages = Storage.getMileages();
         this.showEventModal = false;
         this.showToast('日程已删除', 'success');
       }
@@ -1590,10 +1609,86 @@ createApp({
 
     deleteMileage(id) {
       if (confirm('确定要删除这条里程记录吗？')) {
+        // 若该里程由某个日程事件关联（id 相同），同步把该事件的公里数归零
+        const ev = this.events.find(e => e.id === id);
+        if (ev) {
+          const accountId = ev._accountId || Storage.activeAccount;
+          Storage.updateEvent(id, { km: 0 }, accountId);
+        }
         Storage.deleteMileage(id);
         this.mileages = Storage.getMileages();
+        this.events = this.loadEvents();
         this.showToast('里程记录已删除', 'success');
       }
+    },
+
+    // 让独立里程记录与日程事件保持同步：通过相同 id 关联
+    // - 事件有 km：按 id 更新关联里程；找不到则按 (日期,km) 关联历史遗留的独立里程；再没有则新建
+    // - 事件 km 归零：删除关联里程
+    syncMileageForEvent(event) {
+      const km = parseFloat(event.km) || 0;
+      const mileages = Storage.getMileages();
+      let target = mileages.find(m => m.id === event.id);
+      if (!target) {
+        target = mileages.find(m => m.date === event.date && Math.abs((m.km || 0) - km) < 0.001);
+      }
+      if (km > 0) {
+        const loc = event.location || '未指定地点';
+        if (target) {
+          target.id = event.id;
+          target.date = event.date;
+          target.location = loc;
+          target.km = km;
+          target.notes = event.description || target.notes || '';
+          target.updatedAt = new Date().toISOString();
+        } else {
+          target = {
+            id: event.id,
+            date: event.date,
+            location: loc,
+            km: km,
+            notes: event.description || '',
+            createdAt: new Date().toISOString()
+          };
+          mileages.push(target);
+        }
+        Storage.saveMileages(mileages);
+      } else if (target) {
+        Storage.deleteMileage(event.id);
+      }
+    },
+
+    // 若解析结果的分类不在现有分类中（通常归为「其他」），按内容核心词自动新建分类
+    ensureCategoryForResult(result) {
+      if (result.type !== 'schedule') return;
+      const cat = result.category;
+      if (cat && cat !== '其他' && this.categories.some(c => c.name === cat)) return;
+      const name = this.deriveCategoryName(result);
+      if (!name) return; // 无法推导，保持「其他」
+      if (!this.categories.some(c => c.name === name)) {
+        const color = this._randomCategoryColor();
+        const list = this.categories.map(c => ({ ...c, keywords: [...(c.keywords || [])] }));
+        list.push({ name, color, keywords: [name] });
+        Storage.saveCategories(list);
+        this.categories = Storage.getCategories();
+        if (window.NLP) NLP.setCategories(this.categories);
+      }
+      result.category = name;
+      result.color = (window.NLP && window.NLP.CATEGORY_COLORS[name]) || this._randomCategoryColor();
+    },
+
+    // 从内容提取核心词作为新分类名：去掉地点，再去掉拍摄/策划/剪辑等动作词与冗余连接词
+    deriveCategoryName(result) {
+      let t = (result.title || '').trim();
+      const loc = (result.location || '').trim();
+      if (loc && t.indexOf(loc) >= 0) t = t.replace(loc, '');
+      t = t.replace(/(拍摄|摄影|拍照|取景|布光|外景|拍|策划|筹划|企划|剪辑|剪片|后期|精修|调色|了|呀|啊|呢|吧|哦|嘛|哈|的|去|到|在|和|跟|给|帮|我|做|弄|进行|负责|参加|参与|完成|开展|这个|那个)/g, '');
+      t = t.trim();
+      if (!t && loc) t = loc; // 退路：用地点
+      if (!t) return null;
+      if (t.length > 6) t = t.slice(0, 6);
+      if (t.length >= 2) return t;
+      return null; // 太短不建
     },
 
     // 计算单条里程的花费
