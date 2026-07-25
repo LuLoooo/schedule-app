@@ -1238,18 +1238,28 @@ textarea { resize: vertical; }
   .day-event-title { font-size: 13px; }
   .day-event-location { font-size: 11px; }
 
-  /* 周视图：横向滚动优化 */
-  .week-grid { -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
-  .week-time-col { width: 42px; }
+  /* 周视图：7 天一屏平分，无需横向滑动 */
+  .week-grid { overflow-x: hidden; }
+  .week-time-col { width: 34px; }
   .week-corner { height: 46px; }
-  .week-time-label { height: 44px; font-size: 10px; padding: 2px 6px; }
-  .week-day-col { min-width: 92px; }
+  .week-time-label { height: 44px; font-size: 9px; padding: 2px 3px; }
+  .week-day-col { min-width: 0; flex: 1 1 0; }
   .week-day-header { height: 46px; }
   .week-day-name { font-size: 10px; }
-  .week-day-num { font-size: 15px; width: 22px; height: 22px; }
-  .week-day-body { min-width: 92px; }
-  .week-event { font-size: 10px; padding: 2px 4px; }
-  .week-event-time { font-size: 9px; }
+  .week-day-num { font-size: 14px; width: 22px; height: 22px; }
+  .week-day-body { min-width: 0; }
+  .week-event { font-size: 10px; padding: 1px 2px; border-left-width: 2px; border-radius: 3px; }
+  .week-event-time { font-size: 8px; }
+  /* 窄列里标题自动换行显示，超出裁切 */
+  .week-event-title {
+    white-space: normal;
+    word-break: break-all;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
 
   /* 月视图：紧凑格子 */
   .month-weekday-cell { padding: 8px 2px; font-size: 11px; }
@@ -1350,8 +1360,11 @@ textarea { resize: vertical; }
   .mileage-stats { grid-template-columns: 1fr; }
   .day-header-date { font-size: 20px; }
   .stat-value { font-size: 20px; }
-  .week-day-col { min-width: 80px; }
-  .week-day-body { min-width: 80px; }
+  .week-day-col { min-width: 0; }
+  .week-day-body { min-width: 0; }
+  .week-time-col { width: 30px; }
+  .week-time-label { font-size: 8px; padding: 2px 2px; }
+  .week-event-time { display: none; }
 }
 
 /* ---- Landscape phone ---- */
