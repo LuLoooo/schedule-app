@@ -1890,3 +1890,94 @@ textarea { resize: vertical; }
   margin-top: 20px;
   background: transparent;
 }
+
+/* ==================== 里程地图 ==================== */
+.mileage-map-section {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.map-region-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 12px;
+}
+.map-region-tab {
+  border: 1px solid var(--border-light, #e2e8f0);
+  background: #f8fafc;
+  color: var(--text-secondary, #64748b);
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.map-region-tab.active {
+  background: var(--primary, #6366f1);
+  border-color: var(--primary, #6366f1);
+  color: #fff;
+}
+.map-canvas {
+  width: 100%;
+  background: linear-gradient(180deg, #f0f7ff 0%, #eaf3ff 100%);
+  border-radius: 12px;
+  padding: 8px;
+  overflow: hidden;
+}
+.map-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.map-path {
+  fill: #dbeafe;
+  stroke: #93c5fd;
+  stroke-width: 0.8;
+}
+.map-feature-label {
+  font-size: 11px;
+  fill: #94a3b8;
+  text-anchor: middle;
+  pointer-events: none;
+  user-select: none;
+}
+.map-dot-group { cursor: pointer; }
+.map-dot {
+  stroke: #fff;
+  stroke-width: 1.5;
+  opacity: 0.9;
+}
+.map-dot-label {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #1e293b;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.map-legend {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #64748b);
+}
+.map-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.lg-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.map-unknown {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #64748b);
+  line-height: 1.8;
+}
+.map-unknown-label { font-weight: 600; }
+.map-unknown-tag {
+  display: inline-block;
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+}

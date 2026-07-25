@@ -62,7 +62,17 @@ createApp({
       toast: { show: false, message: '', type: 'info' },
 
       // 应用版本信息（每按用户意见更新一次，count +1 并刷新时间 —— 见 MEMORY.md 约定）
-      appVersion: { count: 11, time: '7月25日 23:48' },
+      appVersion: { count: 12, time: '7月26日 00:35' },
+
+      // 里程地图：当前展示的层级（中国/山东/淄博/高青）
+      mapRegion: 'china',
+      mapRegionKeys: ['china', 'shandong', 'zibo', 'gaoqing'],
+      mapRegionMeta: {
+        china:    { name: '中国' },
+        shandong: { name: '山东' },
+        zibo:     { name: '淄博' },
+        gaoqing:  { name: '高青县' }
+      },
 
       // 颜色选项
       colorOptions: ['#6366f1', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#14b8a6', '#10b981', '#ef4444'],
@@ -423,6 +433,59 @@ createApp({
           opacity: (0.6 + ratio * 0.4).toFixed(2)
         };
       });
+    },
+
+    // ==================== 里程地图 ====================
+    // 当前层级的地图数据（不含响应式依赖，直接读全局 MAP_REGIONS）
+    mapRegionData() {
+      const R = (typeof window !== 'undefined' && window.MAP_REGIONS) || {};
+      return R[this.mapRegion] || null;
+    },
+
+    // 各地点出现（去的）次数统计（基于全部里程，不随里程页时间筛选变化）
+    mapLocationStats() {
+      const stats = {};
+      for (const m of (this.mileages || [])) {
+        const loc = (m.location || '').trim();
+        if (!loc || loc === '未指定地点') continue;
+        if (!stats[loc]) stats[loc] = { count: 0 };
+        stats[loc].count++;
+      }
+      return stats;
+    },
+
+    // 当前层级下要打的标点：坐标落在地图范围内才显示
+    mapDots() {
+      const region = this.mapRegionData;
+      if (!region) return [];
+      const [minLng, minLat, maxLng, maxLat] = region.bbox;
+      const [W, H] = region.view;
+      // 容许小超出，随地图尺度收紧（省级地图可放宽，区县级需精确避免邻市误入）
+      const margin = Math.min(0.2, (maxLng - minLng) * 0.04);
+      const maxCount = Math.max(1, ...Object.values(this.mapLocationStats).map(s => s.count));
+      const dots = [];
+      for (const name in this.mapLocationStats) {
+        const coord = this.findPlaceCoord(name);
+        if (!coord) continue;
+        const lng = coord[0], lat = coord[1];
+        if (lng < minLng - margin || lng > maxLng + margin ||
+            lat < minLat - margin || lat > maxLat + margin) continue;
+        const x = (lng - minLng) / (maxLng - minLng) * W;
+        const y = (maxLat - lat) / (maxLat - minLat) * H;
+        const count = this.mapLocationStats[name].count;
+        const r = Math.min(20, 6 + Math.sqrt(count) * 3);
+        dots.push({ name, x: +x.toFixed(1), y: +y.toFixed(1), r: +r.toFixed(1), count, color: this.mapDotColor(count, maxCount) });
+      }
+      return dots;
+    },
+
+    // 有里程但未能识别坐标（无地图标点）的地点
+    mapUnknown() {
+      const res = [];
+      for (const name in this.mapLocationStats) {
+        if (!this.findPlaceCoord(name)) res.push(name);
+      }
+      return res;
     }
   },
 
@@ -1431,6 +1494,36 @@ createApp({
       const palette = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
       return palette[i % palette.length];
     },
+
+    // ==================== 里程地图辅助 ====================
+    // 在坐标表中查找地点（支持"高青县"→"高青"这类后缀归一）
+    findPlaceCoord(name) {
+      const P = (typeof window !== 'undefined' && window.MAP_PLACES) || {};
+      if (!name || !P) return null;
+      const norm = n => (n || '').replace(/(省|市|区|县|自治州|盟|地区|特别行政区)$/, '');
+      return P[name] || P[norm(name)] || null;
+    },
+
+    // 经纬度 → 当前地图 SVG 坐标（与构建 maps-data.js 时投影一致：等距圆柱 + 纬度余弦校正）
+    mapProjectX(lng) {
+      const r = this.mapRegionData;
+      if (!r) return 0;
+      return (lng - r.bbox[0]) / (r.bbox[2] - r.bbox[0]) * r.view[0];
+    },
+    mapProjectY(lat) {
+      const r = this.mapRegionData;
+      if (!r) return 0;
+      return (r.bbox[3] - lat) / (r.bbox[3] - r.bbox[1]) * r.view[1];
+    },
+
+    // 标点颜色：按"去的次数"相对最大值，蓝→橙→红
+    mapDotColor(count, maxCount) {
+      const t = count / (maxCount || 1);
+      if (t < 0.34) return '#3b82f6';
+      if (t < 0.67) return '#f59e0b';
+      return '#ef4444';
+    },
+
 
     // 生成事件备注：只存输入框里的原始输入内容（开车里程另有独立字段 km，不混入备注）
     buildEventDescription(r) {

@@ -83,9 +83,12 @@ const NLP = {
     const segments = this.splitSegments(input);
     const results = [];
     let lastEndHour = null; // 跟踪上一个事件的结束小时，用于跨片段AM/PM推断
+    let lastDate = null;    // 跨片段继承的日期：首个片段明确说日期后生效，后续未说日期的片段统一沿用
 
     for (const seg of segments) {
-      const segResults = this.parseSegment(seg, baseDate, lastEndHour);
+      // 若上一片段已有明确日期，且本片段未再说日期，则把"默认日期"设为上一片段的日期
+      const effBase = (lastDate && !this.hasExplicitDate(seg)) ? new Date(lastDate) : baseDate;
+      const segResults = this.parseSegment(seg, effBase, lastEndHour);
       if (segResults) {
         const arr = Array.isArray(segResults) ? segResults : [segResults];
         // 记录该片段的原始输入文本，供备注展示
@@ -93,6 +96,14 @@ const NLP = {
           if (r && !r.raw) r.raw = seg.trim();
         }
         results.push(...arr);
+        // 用本片段结果日期刷新 lastDate（便于后续片段继承；若本片段自身无日期则沿用上一片段的）
+        for (const r of arr) {
+          if (r && r.date) {
+            const parts = r.date.split('-').map(Number);
+            lastDate = new Date(parts[0], parts[1] - 1, parts[2]);
+            break;
+          }
+        }
         // 更新lastEndHour为最大的开始时间（用于后续片段推断上下午）
         for (const r of arr) {
           if (r.type === 'schedule' && r.startTime) {
@@ -104,6 +115,20 @@ const NLP = {
     }
 
     return results;
+  },
+
+  /**
+   * 判断片段是否"显式"提到了日期（用于跨片段日期继承）。
+   * 显式提及（今天/明天/周X/N月M号/单说N号等）→ 用自身日期；
+   * 仅提到时间段（上午/下午/晚上）或完全没提 → 视为未说日期，应继承上一片段日期。
+   * 注意排除"3号线/5号楼"这类含"号"字的非日期用法。
+   */
+  hasExplicitDate(text) {
+    if (/(今(?:天|日)|明(?:天|日)|后天|大后天|昨(?:天|日)|前天|这周|下周|下下周|本周|周[一二三四五六日天]|星期[一二三四五六日天]|礼拜[一二三四五六日天])/.test(text)) return true;
+    if (/\d{1,2}\s*月\s*\d{1,2}\s*[日号]/.test(text)) return true;
+    // 单说 N号 / N日（无月份），排除 号线/号楼/门牌等
+    if (/(?:^|[^\d月])(?:\d{1,2}|[零一二两三四五六七八九十]{1,3})\s*[日号](?![线楼门栋室号院区座])/.test(text)) return true;
+    return false;
   },
 
   /**

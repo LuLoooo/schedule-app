@@ -334,6 +334,51 @@
       </div>
     </div>
 
+    <!-- Location Map -->
+    <div class="mileage-map-section" v-if="mapRegionData">
+      <div class="chart-title">🗺️ 常去地点地图<span class="cloud-hint">（标点 = 去过的地方，数字 = 去的次数）</span></div>
+      <div class="map-region-tabs">
+        <button
+          v-for="rk in mapRegionKeys"
+          :key="rk"
+          :class="['map-region-tab', { active: mapRegion === rk }]"
+          @click="mapRegion = rk"
+        >{{ mapRegionMeta[rk].name }}</button>
+      </div>
+      <div class="map-canvas">
+        <svg :viewBox="'0 0 ' + mapRegionData.view[0] + ' ' + mapRegionData.view[1]" class="map-svg" preserveAspectRatio="xMidYMid meet">
+          <path v-for="(d, i) in mapRegionData.paths" :key="'p' + i" :d="d" class="map-path" />
+          <text
+            v-for="(lb, i) in mapRegionData.labels"
+            :key="'lb' + i"
+            :x="mapProjectX(lb.lng)"
+            :y="mapProjectY(lb.lat)"
+            class="map-feature-label"
+          >{{ lb.name }}</text>
+          <g
+            v-for="dot in mapDots"
+            :key="'dot' + dot.name"
+            class="map-dot-group"
+            :transform="'translate(' + dot.x + ',' + dot.y + ')'"
+          >
+            <circle :r="dot.r" class="map-dot" :fill="dot.color">
+              <title>{{ dot.name }}：去过 {{ dot.count }} 次</title>
+            </circle>
+            <text class="map-dot-label" :y="-(dot.r + 4)">{{ dot.count }}</text>
+          </g>
+        </svg>
+      </div>
+      <div class="map-legend" v-if="mapDots.length">
+        <span class="map-legend-item"><i class="lg-dot" style="background:#3b82f6"></i>少</span>
+        <span class="map-legend-item"><i class="lg-dot" style="background:#f59e0b"></i>中</span>
+        <span class="map-legend-item"><i class="lg-dot" style="background:#ef4444"></i>多</span>
+      </div>
+      <div class="map-unknown" v-if="mapUnknown.length">
+        <span class="map-unknown-label">未识别地点（无坐标）：</span>
+        <span v-for="u in mapUnknown" :key="u" class="map-unknown-tag">{{ u }}</span>
+      </div>
+    </div>
+
     <!-- Mileage List -->
     <div class="mileage-list-section">
       <div class="section-header">
@@ -778,6 +823,7 @@
 <script src="js/nlp.js"></script>
 <script src="js/scheduler.js"></script>
 <script src="js/exporter.js"></script>
+<script src="js/maps-data.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
