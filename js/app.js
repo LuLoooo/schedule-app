@@ -15,6 +15,7 @@ createApp({
 
       // 时间轴每格高度（px），用于连续矩形定位
       hourPx: 56,
+      gapPx: 18, // 折叠空白时段的高度
 
       // 日期导航
       currentDate: new Date(),
@@ -85,6 +86,10 @@ createApp({
       // 事件弹窗地点下拉 - 新增地点内联输入
       showAddLocInput: false,
       newLocInput: '',
+
+      // 事件弹窗分类下拉 - 新增分类内联输入
+      showAddCatInput: false,
+      newCatInput: '',
 
       // 删除分类弹窗（让用户选择把该分类下的日程归到哪一类）
       showDeleteCategoryModal: false,
@@ -175,6 +180,22 @@ createApp({
     // 周视图：每一天各自做连续矩形定位
     weekPositioned() {
       return this.weekDays.map(d => this.layoutEvents(this.getDayEvents(d.date)));
+    },
+
+    // 日视图分段时间轴：有日程的小时展开，空白时段折叠
+    daySegments() {
+      return this.buildSegments([this.dayPositioned]);
+    },
+    dayTotalPx() {
+      return this.segmentsTotalPx(this.daySegments);
+    },
+
+    // 周视图分段时间轴：取 7 天日程的并集
+    weekSegments() {
+      return this.buildSegments(this.weekPositioned);
+    },
+    weekTotalPx() {
+      return this.segmentsTotalPx(this.weekSegments);
     },
 
     monthDays() {
@@ -936,6 +957,94 @@ createApp({
       return list;
     },
 
+    // ==================== 分段时间轴（压缩无日程时段） ====================
+
+    /**
+     * 根据若干天的已定位事件，把 0-24 点切成「展开段」和「折叠段」。
+     * - 有事件覆盖的小时（含前后各 1 小时缓冲）展开为正常高度
+     * - 连续空白小时合并为一条极窄折叠条（gapPx 高）
+     * - 完全没有事件时，默认展开 8:00-19:00
+     * 返回 [{ type:'open'|'gap', from, to, top, px }]，from/to 为小时 [from, to)
+     */
+    buildSegments(eventLists) {
+      const covered = new Array(24).fill(false);
+      let has = false;
+      for (const list of eventLists) {
+        for (const ev of list) {
+          if (ev.allDay) { covered[0] = true; has = true; continue; }
+          const sh = Math.max(0, Math.floor(ev._start / 60));
+          const eh = Math.min(23, Math.max(sh, Math.ceil(ev._end / 60) - 1));
+          for (let h = sh; h <= eh; h++) covered[h] = true;
+          has = true;
+        }
+      }
+      if (!has) {
+        for (let h = 8; h < 19; h++) covered[h] = true;
+      }
+      // 前后各留 1 小时缓冲，方便点击空白快速添加
+      const open = covered.slice();
+      for (let h = 0; h < 24; h++) {
+        if (covered[h]) {
+          if (h > 0) open[h - 1] = true;
+          if (h < 23) open[h + 1] = true;
+        }
+      }
+      const segs = [];
+      let h = 0;
+      while (h < 24) {
+        const isOpen = open[h];
+        let end = h;
+        while (end < 24 && open[end] === isOpen) end++;
+        segs.push({ type: isOpen ? 'open' : 'gap', from: h, to: end });
+        h = end;
+      }
+      let y = 0;
+      for (const s of segs) {
+        s.top = y;
+        s.px = s.type === 'open' ? (s.to - s.from) * this.hourPx : this.gapPx;
+        y += s.px;
+      }
+      return segs;
+    },
+
+    segmentsTotalPx(segs) {
+      if (!segs.length) return 24 * this.hourPx;
+      const last = segs[segs.length - 1];
+      return last.top + last.px;
+    },
+
+    // 分钟（0-1440）→ 像素 Y（沿分段轴）
+    minutesToY(min, segs) {
+      for (const s of segs) {
+        const sMin = s.from * 60, eMin = s.to * 60;
+        if (min < sMin) return s.top;
+        if (min < eMin) {
+          if (s.type === 'gap') return s.top + (min - sMin) / (eMin - sMin) * s.px;
+          return s.top + (min - sMin) / 60 * this.hourPx;
+        }
+      }
+      const last = segs[segs.length - 1];
+      return last ? last.top + last.px : min / 60 * this.hourPx;
+    },
+
+    // 像素 Y → 小时（用于点击空白快速添加）
+    yToHour(y, segs) {
+      for (const s of segs) {
+        if (y < s.top + s.px) {
+          if (s.type === 'gap') return s.from;
+          return Math.min(23, s.from + Math.floor((y - s.top) / this.hourPx));
+        }
+      }
+      return 23;
+    },
+
+    // 折叠条上显示的时间范围文本
+    gapLabel(seg) {
+      const f = String(seg.from).padStart(2, '0');
+      const t = seg.to >= 24 ? '24' : String(seg.to).padStart(2, '0');
+      return f + ':00 ~ ' + t + ':00';
+    },
+
     dayEventStyle(ev) {
       if (ev.allDay) {
         return {
@@ -943,9 +1052,11 @@ createApp({
           backgroundColor: ev.color + '22', borderLeftColor: ev.color
         };
       }
+      const top = this.minutesToY(ev._start, this.daySegments);
+      const height = Math.max(20, this.minutesToY(ev._end, this.daySegments) - top);
       return {
-        top: ev._top + 'px',
-        height: ev._height + 'px',
+        top: top + 'px',
+        height: height + 'px',
         left: 'calc(' + ev._leftPct + '% + 2px)',
         width: 'calc(' + ev._widthPct + '% - 4px)',
         backgroundColor: ev.color + '18',
@@ -960,9 +1071,11 @@ createApp({
           backgroundColor: ev.color + '28', borderLeftColor: ev.color, color: ev.color
         };
       }
+      const top = this.minutesToY(ev._start, this.weekSegments);
+      const height = Math.max(16, this.minutesToY(ev._end, this.weekSegments) - top);
       return {
-        top: ev._top + 'px',
-        height: ev._height + 'px',
+        top: top + 'px',
+        height: height + 'px',
         left: 'calc(' + ev._leftPct + '% + 1px)',
         width: 'calc(' + ev._widthPct + '% - 2px)',
         backgroundColor: ev.color + '22',
@@ -971,19 +1084,19 @@ createApp({
       };
     },
 
-    // 日视图空白处点击：按 Y 坐标估算小时，快速新建
+    // 日视图空白处点击：按 Y 坐标沿分段轴反算小时，快速新建
     dayQuickAdd(e, date) {
       const rect = e.currentTarget.getBoundingClientRect();
       const y = e.clientY - rect.top;
-      const hour = Math.max(0, Math.min(23, Math.floor(y / this.hourPx)));
+      const hour = this.yToHour(y, this.daySegments);
       this.quickAddEvent(date, hour);
     },
 
-    // 周视图某天空白处点击：按 Y 坐标估算小时，快速新建
+    // 周视图某天空白处点击：按 Y 坐标沿分段轴反算小时，快速新建
     weekQuickAdd(e, date) {
       const rect = e.currentTarget.getBoundingClientRect();
       const y = e.clientY - rect.top;
-      const hour = Math.max(0, Math.min(23, Math.floor(y / this.hourPx)));
+      const hour = this.yToHour(y, this.weekSegments);
       this.quickAddEvent(date, hour);
     },
 
@@ -1005,6 +1118,9 @@ createApp({
         category: event.category || '其他',
         id: event.id
       };
+      this._lastCategory = this.editingEvent.category;
+      this.showAddCatInput = false;
+      this.newCatInput = '';
       this.showEventModal = true;
     },
 
@@ -1013,6 +1129,54 @@ createApp({
       const cat = this.editingEvent.category;
       if (cat && cat !== '其他' && window.NLP && window.NLP.CATEGORY_COLORS[cat]) {
         this.editingEvent.color = window.NLP.CATEGORY_COLORS[cat];
+      }
+    },
+
+    // 事件弹窗分类下拉：选到「➕ 新增分类…」时展开内联输入
+    onCategorySelect() {
+      if (this.editingEvent.category === '__add_new_cat__') {
+        this.showAddCatInput = true;
+        this.newCatInput = '';
+      } else {
+        this._lastCategory = this.editingEvent.category;
+        this.showAddCatInput = false;
+        this.onCategoryChange();
+      }
+    },
+
+    // 弹窗内确认新增分类：创建 + 持久化 + 同步 NLP + 选中
+    confirmAddCategory() {
+      const name = (this.newCatInput || '').trim();
+      if (!name) { this.showToast('请输入分类名称', 'error'); return; }
+      if (name === '全部' || name === '__add_new_cat__') { this.showToast('该名称不可用', 'error'); return; }
+      if (this.categories.some(c => c.name === name)) {
+        this.editingEvent.category = name;
+        this._lastCategory = name;
+        this.showAddCatInput = false;
+        this.newCatInput = '';
+        this.onCategoryChange();
+        this.showToast('该分类已存在，已为你选中', 'info');
+        return;
+      }
+      const color = this._randomCategoryColor();
+      const list = this.categories.map(c => ({ ...c, keywords: [...(c.keywords || [])] }));
+      list.push({ name, color, keywords: [name] });
+      Storage.saveCategories(list);
+      this.categories = Storage.getCategories();
+      if (window.NLP) NLP.setCategories(this.categories);
+      this.editingEvent.category = name;
+      this.editingEvent.color = color;
+      this._lastCategory = name;
+      this.showAddCatInput = false;
+      this.newCatInput = '';
+      this.showToast('分类「' + name + '」已添加并选中', 'success');
+    },
+
+    cancelAddCategory() {
+      this.showAddCatInput = false;
+      this.newCatInput = '';
+      if (this.editingEvent.category === '__add_new_cat__') {
+        this.editingEvent.category = this._lastCategory || '其他';
       }
     },
 

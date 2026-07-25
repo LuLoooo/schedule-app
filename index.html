@@ -148,9 +148,18 @@
       <div class="day-timeline">
         <div class="day-body">
           <div class="day-labels">
-            <div class="day-label" v-for="h in 24" :key="h - 1" :style="{ height: hourPx + 'px' }">{{ String(h - 1).padStart(2, '0') }}:00</div>
+            <template v-for="(seg, si) in daySegments" :key="'dl' + si">
+              <template v-if="seg.type === 'open'">
+                <div class="day-label" v-for="n in (seg.to - seg.from)" :key="'dlh' + si + '-' + n" :style="{ height: hourPx + 'px' }">{{ String(seg.from + n - 1).padStart(2, '0') }}:00</div>
+              </template>
+              <div v-else class="day-label-gap" :style="{ height: seg.px + 'px' }">⋯</div>
+            </template>
           </div>
-          <div class="day-content" :style="{ '--hour-px': hourPx + 'px', height: (24 * hourPx) + 'px' }" @click="dayQuickAdd($event, currentDate)">
+          <div class="day-content seg-timeline" :style="{ '--hour-px': hourPx + 'px', height: dayTotalPx + 'px' }" @click="dayQuickAdd($event, currentDate)">
+            <template v-for="(seg, si) in daySegments" :key="'ds' + si">
+              <div v-if="seg.type === 'open'" class="seg-grid" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"></div>
+              <div v-else class="seg-gap" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"><span class="seg-gap-text">{{ gapLabel(seg) }}</span></div>
+            </template>
             <div
               v-for="ev in dayPositioned"
               :key="ev.id"
@@ -176,14 +185,23 @@
       <div class="week-grid">
         <div class="week-time-col">
           <div class="week-corner"></div>
-          <div class="week-time-label" v-for="h in 24" :key="h - 1" :style="{ height: hourPx + 'px' }">{{ String(h - 1).padStart(2, '0') }}:00</div>
+          <template v-for="(seg, si) in weekSegments" :key="'wl' + si">
+            <template v-if="seg.type === 'open'">
+              <div class="week-time-label" v-for="n in (seg.to - seg.from)" :key="'wlh' + si + '-' + n" :style="{ height: hourPx + 'px' }">{{ String(seg.from + n - 1).padStart(2, '0') }}:00</div>
+            </template>
+            <div v-else class="week-label-gap" :style="{ height: seg.px + 'px' }">⋯</div>
+          </template>
         </div>
         <div v-for="(day, di) in weekDays" :key="di" class="week-day-col" :class="{ today: isSameDay(day.date, new Date()) }">
           <div class="week-day-header">
             <div class="week-day-name">{{ day.weekdayShort }}</div>
             <div class="week-day-num">{{ day.date.getDate() }}</div>
           </div>
-          <div class="week-day-body" :style="{ '--hour-px': hourPx + 'px', height: (24 * hourPx) + 'px' }" @click="weekQuickAdd($event, day.date)">
+          <div class="week-day-body seg-timeline" :style="{ '--hour-px': hourPx + 'px', height: weekTotalPx + 'px' }" @click="weekQuickAdd($event, day.date)">
+            <template v-for="(seg, si) in weekSegments" :key="'ws' + si">
+              <div v-if="seg.type === 'open'" class="seg-grid" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"></div>
+              <div v-else class="seg-gap" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"></div>
+            </template>
             <div
               v-for="ev in weekPositioned[di]"
               :key="ev.id"
@@ -372,9 +390,16 @@
         </div>
         <div class="form-group">
           <label>分类</label>
-          <select v-model="editingEvent.category" class="form-input" @change="onCategoryChange">
+          <select v-model="editingEvent.category" class="form-input" @change="onCategorySelect">
             <option v-for="c in categories" :key="c.name" :value="c.name">{{ c.name }}</option>
+            <option value="__add_new_cat__">➕ 新增分类…</option>
           </select>
+          <!-- 内联新增分类输入 -->
+          <div class="loc-add-inline" v-if="showAddCatInput">
+            <input v-model="newCatInput" class="form-input" placeholder="新分类名称，如：开会" @keyup.enter="confirmAddCategory()" />
+            <button type="button" class="btn btn-primary btn-sm" @click="confirmAddCategory()">✓ 添加</button>
+            <button type="button" class="btn btn-ghost btn-sm" @click="cancelAddCategory()">取消</button>
+          </div>
         </div>
         <div class="form-group">
           <label>颜色</label>

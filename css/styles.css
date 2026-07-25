@@ -449,6 +449,14 @@ textarea { resize: vertical; }
 .day-content {
   position: relative;
   flex: 1;
+}
+
+/* ===== 分段时间轴：展开段网格线 + 折叠空白条 ===== */
+.seg-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
   background-image: repeating-linear-gradient(
     to bottom,
     var(--border-light) 0,
@@ -456,6 +464,44 @@ textarea { resize: vertical; }
     transparent 1px,
     transparent var(--hour-px, 56px)
   );
+}
+.seg-gap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--bg, #f8fafc) 0,
+    var(--bg, #f8fafc) 5px,
+    rgba(99, 102, 241, 0.05) 5px,
+    rgba(99, 102, 241, 0.05) 10px
+  );
+  border-top: 1px dashed var(--border, #e2e8f0);
+  border-bottom: 1px dashed var(--border, #e2e8f0);
+  overflow: hidden;
+}
+.seg-gap-text {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.day-label-gap,
+.week-label-gap {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-bottom: 1px dashed var(--border-light);
+  overflow: hidden;
+  line-height: 1;
 }
 .day-empty {
   position: absolute;
@@ -589,13 +635,6 @@ textarea { resize: vertical; }
 
 .week-day-body {
   position: relative;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    var(--border-light) 0,
-    var(--border-light) 1px,
-    transparent 1px,
-    transparent var(--hour-px, 56px)
-  );
 }
 
 .week-hour-cell {
