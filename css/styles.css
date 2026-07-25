@@ -84,6 +84,7 @@ textarea { resize: vertical; }
   font-weight: 500;
   color: var(--text-secondary);
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .mode-tab.active {
@@ -1136,19 +1137,35 @@ textarea { resize: vertical; }
 
 /* ---- Tablet & Mobile (<=768px) ---- */
 @media (max-width: 768px) {
-  /* Header: 紧凑布局 + 刘海屏适配 */
+  /* Header: 两行布局，上排 logo+账户+操作，下排两个大标签 */
   .app-header {
-    padding: 0 10px;
-    padding-top: env(safe-area-inset-top);
-    min-height: 52px;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    padding-top: calc(6px + env(safe-area-inset-top));
+    min-height: 0;
     height: auto;
-    gap: 6px;
+    gap: 8px;
+    row-gap: 8px;
   }
   .logo { font-size: 15px; gap: 4px; }
   .logo-text { display: none; }
   .logo-icon { font-size: 22px; }
-  .mode-tabs { padding: 3px; gap: 2px; }
-  .mode-tab { padding: 5px 10px; font-size: 13px; }
+  .header-left { flex-shrink: 0; }
+  /* 标签整行占满，放到第二行，两个标签各占一半 */
+  .header-center {
+    order: 3;
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .mode-tabs { padding: 3px; gap: 4px; width: 100%; }
+  .mode-tab {
+    flex: 1;
+    text-align: center;
+    padding: 9px 8px;
+    font-size: 14px;
+  }
+  /* 上排右侧操作 */
+  .header-right { flex: 1; justify-content: flex-end; align-items: center; gap: 6px; }
   /* 只显示图标，隐藏文字 */
   .header-right .btn-text { display: none; }
   .header-right .btn { padding: 8px 10px; font-size: 18px; min-height: 40px; min-width: 40px; justify-content: center; }
@@ -1328,7 +1345,7 @@ textarea { resize: vertical; }
 
 /* ---- Small phones (<=380px) ---- */
 @media (max-width: 380px) {
-  .mode-tab { padding: 5px 8px; font-size: 12px; }
+  .mode-tab { padding: 8px 6px; font-size: 13px; }
   .logo-icon { font-size: 20px; }
   .mileage-stats { grid-template-columns: 1fr; }
   .day-header-date { font-size: 20px; }
