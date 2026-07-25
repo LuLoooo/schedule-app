@@ -188,8 +188,30 @@ createApp({
     daySegments() {
       return this.buildSegments([this.dayPositioned]);
     },
+
+    // 日视图事件最终排布：全宽 + 同段重叠时改为上下依次叠放（不再左右分列）
+    dayLaidOut() {
+      const segs = this.daySegments;
+      const gap = 3;
+      let lastBottom = -Infinity;
+      return this.dayPositioned.map(ev => {
+        if (ev.allDay) return ev;
+        let top = this.minutesToY(ev._start, segs);
+        const bottom = this.minutesToY(ev._end, segs);
+        let height = Math.max(28, bottom - top);
+        // 与上一个事件在视觉上重叠 → 顺延到其下方，保证全宽依次排开
+        if (top < lastBottom + gap) top = lastBottom + gap;
+        lastBottom = top + height;
+        return Object.assign({}, ev, { _pxTop: top, _pxHeight: height });
+      });
+    },
+
     dayTotalPx() {
-      return this.segmentsTotalPx(this.daySegments);
+      let maxBottom = this.segmentsTotalPx(this.daySegments);
+      for (const ev of this.dayLaidOut) {
+        if (ev._pxTop != null) maxBottom = Math.max(maxBottom, ev._pxTop + ev._pxHeight);
+      }
+      return maxBottom;
     },
 
     // 周视图分段时间轴：取 7 天日程的并集
@@ -372,6 +394,32 @@ createApp({
         }
       }
       return data;
+    },
+
+    // 里程地点文字云：某地点出现（去的）次数越多，字号越大
+    locationCloud() {
+      const counts = {};
+      for (const m of this.filteredMileages) {
+        const loc = (m.location || '').trim();
+        if (!loc || loc === '未指定地点') continue;
+        counts[loc] = (counts[loc] || 0) + 1;
+      }
+      const entries = Object.keys(counts).map(k => ({ name: k, count: counts[k] }));
+      if (!entries.length) return [];
+      const max = Math.max(...entries.map(e => e.count));
+      const min = Math.min(...entries.map(e => e.count));
+      entries.sort((a, b) => b.count - a.count);
+      const minSize = 15, maxSize = 42;
+      return entries.map(e => {
+        const ratio = max === min ? 1 : (e.count - min) / (max - min);
+        return {
+          name: e.name,
+          count: e.count,
+          size: Math.round(minSize + ratio * (maxSize - minSize)),
+          weight: 400 + Math.round(ratio * 400),
+          opacity: (0.6 + ratio * 0.4).toFixed(2)
+        };
+      });
     }
   },
 
@@ -613,7 +661,7 @@ createApp({
             allDay: r.allDay,
             location: r.location,
             color: r.color,
-            description: r.description || ''
+            description: this.buildEventDescription(r)
           });
           scheduleAdded++;
         } else if (r.type === 'mileage') {
@@ -685,7 +733,7 @@ createApp({
           allDay: result.allDay,
           location: result.location,
           color: result.color,
-          description: result.description || ''
+          description: this.buildEventDescription(result)
         };
         Storage.addEvent(event);
         this.autoSaveParsedLocations([result]);
@@ -1083,13 +1131,14 @@ createApp({
           backgroundColor: ev.color + '22', borderLeftColor: ev.color
         };
       }
-      const top = this.minutesToY(ev._start, this.daySegments);
-      const height = Math.max(20, this.minutesToY(ev._end, this.daySegments) - top);
+      // 使用 dayLaidOut 预计算的全宽上下叠放坐标
+      const top = ev._pxTop != null ? ev._pxTop : this.minutesToY(ev._start, this.daySegments);
+      const height = ev._pxHeight != null ? ev._pxHeight : Math.max(28, this.minutesToY(ev._end, this.daySegments) - top);
       return {
         top: top + 'px',
         height: height + 'px',
-        left: 'calc(' + ev._leftPct + '% + 2px)',
-        width: 'calc(' + ev._widthPct + '% - 4px)',
+        left: '2px',
+        width: 'calc(100% - 4px)',
         backgroundColor: ev.color + '18',
         borderLeftColor: ev.color
       };
@@ -1336,6 +1385,25 @@ createApp({
     },
 
     // 说话解析出的地点自动加入常用地点（去重、同步 NLP），实现"说到哪里就归到哪里"
+    // 文字云配色：按顺序循环取一组莫兰迪色
+    cloudColor(i) {
+      const palette = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
+      return palette[i % palette.length];
+    },
+
+    // 生成事件备注：开车里程单列在最前，其后附上输入框里的原始解析内容
+    buildEventDescription(r) {
+      const lines = [];
+      if (r && r.km && r.km > 0) {
+        lines.push('🚗 开车里程：' + r.km + ' km');
+      }
+      const raw = (r && r.raw ? r.raw : '').trim();
+      if (raw) lines.push(raw);
+      // 若既无里程也无原文，退回原 description（如关联里程文案）
+      if (!lines.length && r && r.description) return r.description;
+      return lines.join('\n');
+    },
+
     autoSaveParsedLocations(results) {
       const fresh = [];
       for (const r of results || []) {

@@ -88,6 +88,10 @@ const NLP = {
       const segResults = this.parseSegment(seg, baseDate, lastEndHour);
       if (segResults) {
         const arr = Array.isArray(segResults) ? segResults : [segResults];
+        // 记录该片段的原始输入文本，供备注展示
+        for (const r of arr) {
+          if (r && !r.raw) r.raw = seg.trim();
+        }
         results.push(...arr);
         // 更新lastEndHour为最大的开始时间（用于后续片段推断上下午）
         for (const r of arr) {
@@ -460,6 +464,7 @@ const NLP = {
       allDay: false,
       location: hasLocation ? mileage.location : '',
       color: color,
+      km: mileage.km,
       description: '关联里程：' + mileage.km + 'km',
       description_text: `${this.formatDateChinese(dateObj)} ${startTime}-${endTime} ${title}${hasLocation ? '（地点：' + mileage.location + '，' + mileage.km + 'km）' : '（' + mileage.km + 'km）'}`
     };
