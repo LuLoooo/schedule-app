@@ -1,5 +1,5 @@
 // 日程管家 Service Worker —— 离线缓存 + 在线优先（始终拉取最新）
-const CACHE = 'schedule-v2';
+const CACHE = 'schedule-v3';
 const ASSETS = [
   './',
   './index.html',

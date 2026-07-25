@@ -61,6 +61,9 @@ createApp({
       // Toast
       toast: { show: false, message: '', type: 'info' },
 
+      // 应用版本信息（每按用户意见更新一次，count +1 并刷新时间 —— 见 MEMORY.md 约定）
+      appVersion: { count: 10, time: '7月25日 23:35' },
+
       // 颜色选项
       colorOptions: ['#6366f1', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#14b8a6', '#10b981', '#ef4444'],
 
@@ -443,6 +446,9 @@ createApp({
       this.currentAccountName = acc ? acc.name : '';
       this.accountList = Storage.getAccounts();
 
+      // 迁移旧数据：备注里以"🚗 开车里程：X km"开头的事件 → 拆成独立 km 字段 + 纯原文备注
+      this.migrateKmInDescriptions();
+
       this.events = this.loadEvents();
       this.mileages = Storage.getMileages();
 
@@ -586,6 +592,23 @@ createApp({
       this.showLogin = true;
     },
 
+    // 一次性迁移：旧版把"🚗 开车里程：X km"写进备注首行，现在拆到独立 km 字段
+    migrateKmInDescriptions() {
+      const evs = Storage.getEvents() || [];
+      const re = /^🚗\s*开车里程[：:]\s*(\d+\.?\d*)\s*km\s*\n?/;
+      for (const ev of evs) {
+        const desc = ev.description || '';
+        const m = desc.match(re);
+        if (m) {
+          const patch = {
+            description: desc.replace(re, '').trim()
+          };
+          if (!ev.km || !(ev.km > 0)) patch.km = parseFloat(m[1]) || 0;
+          Storage.updateEvent(ev.id, { ...ev, ...patch });
+        }
+      }
+    },
+
     // 根据视图范围加载事件：当前账户 or 全部账户汇总
     loadEvents() {
       if (this.viewScope === 'all') return Storage.getAllEvents();
@@ -661,6 +684,7 @@ createApp({
             allDay: r.allDay,
             location: r.location,
             color: r.color,
+            km: r.km || 0,
             description: this.buildEventDescription(r)
           });
           scheduleAdded++;
@@ -733,6 +757,7 @@ createApp({
           allDay: result.allDay,
           location: result.location,
           color: result.color,
+          km: result.km || 0,
           description: this.buildEventDescription(result)
         };
         Storage.addEvent(event);
@@ -838,13 +863,15 @@ createApp({
         if (result.type === 'schedule') {
           Storage.addEvent({
             title: result.title,
+            category: result.category || '其他',
             date: result.date,
             startTime: result.startTime,
             endTime: result.endTime,
             allDay: result.allDay,
             location: result.location,
             color: result.color,
-            description: result.description || ''
+            km: result.km || 0,
+            description: this.buildEventDescription(result)
           });
           scheduleAdded++;
         } else if (result.type === 'mileage') {
@@ -1196,6 +1223,7 @@ createApp({
         ...event,
         dateStr: event.date,
         category: event.category || '其他',
+        km: event.km || '',
         id: event.id
       };
       this._lastCategory = this.editingEvent.category;
@@ -1391,17 +1419,12 @@ createApp({
       return palette[i % palette.length];
     },
 
-    // 生成事件备注：开车里程单列在最前，其后附上输入框里的原始解析内容
+    // 生成事件备注：只存输入框里的原始输入内容（开车里程另有独立字段 km，不混入备注）
     buildEventDescription(r) {
-      const lines = [];
-      if (r && r.km && r.km > 0) {
-        lines.push('🚗 开车里程：' + r.km + ' km');
-      }
       const raw = (r && r.raw ? r.raw : '').trim();
-      if (raw) lines.push(raw);
-      // 若既无里程也无原文，退回原 description（如关联里程文案）
-      if (!lines.length && r && r.description) return r.description;
-      return lines.join('\n');
+      if (raw) return raw;
+      // 无原文时退回原 description（如关联里程文案）
+      return (r && r.description) ? r.description : '';
     },
 
     autoSaveParsedLocations(results) {
@@ -1515,6 +1538,7 @@ createApp({
         endTime: endTime,
         location: '',
         color: '#6366f1',
+        km: '',
         description: ''
       };
       this.showEventModal = true;
@@ -1534,6 +1558,7 @@ createApp({
         endTime: this.editingEvent.endTime,
         location: this.editingEvent.location || '',
         color: this.editingEvent.color || '#6366f1',
+        km: parseFloat(this.editingEvent.km) || 0,
         description: this.editingEvent.description || ''
       };
 
