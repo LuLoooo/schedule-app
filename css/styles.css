@@ -28,7 +28,7 @@
 }
 
 body {
-  font-family: 'Noto Sans SC', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Inter', 'Helvetica Neue', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
