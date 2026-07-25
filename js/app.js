@@ -16,6 +16,8 @@ createApp({
       // 时间轴每格高度（px），用于连续矩形定位
       hourPx: 56,
       gapPx: 18, // 折叠空白时段的高度
+      // 工作时间段（分钟）：上午 8:30-11:30、下午 13:30-17:00，日/周视图高亮且始终展开
+      workRanges: [[510, 690], [810, 1020]],
 
       // 日期导航
       currentDate: new Date(),
@@ -196,6 +198,14 @@ createApp({
     },
     weekTotalPx() {
       return this.segmentsTotalPx(this.weekSegments);
+    },
+
+    // 工作时间高亮带（沿分段轴映射为像素区间）
+    dayWorkBands() {
+      return this.buildWorkBands(this.daySegments);
+    },
+    weekWorkBands() {
+      return this.buildWorkBands(this.weekSegments);
     },
 
     monthDays() {
@@ -617,6 +627,9 @@ createApp({
         }
       }
 
+      // 1.5 说话里解析出的地点自动存入常用地点（下次直接下拉可选、说到即命中）
+      this.autoSaveParsedLocations(addables);
+
       // 2. 删除类立即执行（危险操作 executeDelete 内部仍 confirm 兜底）
       let deleteCount = 0;
       let deleteCanceled = false;
@@ -675,6 +688,7 @@ createApp({
           description: result.description || ''
         };
         Storage.addEvent(event);
+        this.autoSaveParsedLocations([result]);
         this.events = this.loadEvents();
         this.showToast('已添加日程：' + result.title, 'success');
         this.parseResults.splice(index, 1);
@@ -801,6 +815,7 @@ createApp({
         }
       }
 
+      this.autoSaveParsedLocations(this.parseResults);
       this.events = this.loadEvents();
       this.mileages = Storage.getMileages();
 
@@ -989,6 +1004,12 @@ createApp({
           if (h < 23) open[h + 1] = true;
         }
       }
+      // 工作时间段始终展开（保证高亮带可见）
+      for (const [ws, we] of this.workRanges) {
+        const fromH = Math.floor(ws / 60);
+        const toH = Math.min(23, Math.ceil(we / 60) - 1);
+        for (let wh = fromH; wh <= toH; wh++) open[wh] = true;
+      }
       const segs = [];
       let h = 0;
       while (h < 24) {
@@ -1005,6 +1026,16 @@ createApp({
         y += s.px;
       }
       return segs;
+    },
+
+    // 工作时间段 → 高亮带像素区间（标签如 08:30 ~ 11:30）
+    buildWorkBands(segs) {
+      const fmt = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+      return this.workRanges.map(([ws, we]) => {
+        const top = this.minutesToY(ws, segs);
+        const height = Math.max(0, this.minutesToY(we, segs) - top);
+        return { top, height, label: fmt(ws) + ' ~ ' + fmt(we) + ' 工作时间' };
+      }).filter(b => b.height > 4);
     },
 
     segmentsTotalPx(segs) {
@@ -1302,6 +1333,21 @@ createApp({
       this.locForm = { name: '' };
       this.locError = '';
       this.showLocationModal = true;
+    },
+
+    // 说话解析出的地点自动加入常用地点（去重、同步 NLP），实现"说到哪里就归到哪里"
+    autoSaveParsedLocations(results) {
+      const fresh = [];
+      for (const r of results || []) {
+        const loc = (r && r.location || '').trim();
+        if (loc && loc.length <= 12 && !this.locations.includes(loc) && !fresh.includes(loc)) {
+          fresh.push(loc);
+        }
+      }
+      if (!fresh.length) return;
+      Storage.saveLocations([...this.locations, ...fresh]);
+      this.locations = Storage.getLocations();
+      if (window.NLP) NLP.setLocations(this.locations);
     },
 
     addLocation() {

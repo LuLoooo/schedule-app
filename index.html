@@ -160,6 +160,7 @@
               <div v-if="seg.type === 'open'" class="seg-grid" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"></div>
               <div v-else class="seg-gap" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"><span class="seg-gap-text">{{ gapLabel(seg) }}</span></div>
             </template>
+            <div v-for="(b, bi) in dayWorkBands" :key="'wb' + bi" class="work-band" :style="{ top: b.top + 'px', height: b.height + 'px' }"><span class="work-band-label">{{ b.label }}</span></div>
             <div
               v-for="ev in dayPositioned"
               :key="ev.id"
@@ -202,6 +203,7 @@
               <div v-if="seg.type === 'open'" class="seg-grid" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"></div>
               <div v-else class="seg-gap" :style="{ top: seg.top + 'px', height: seg.px + 'px' }"></div>
             </template>
+            <div v-for="(b, bi) in weekWorkBands" :key="'wwb' + bi" class="work-band" :style="{ top: b.top + 'px', height: b.height + 'px' }"></div>
             <div
               v-for="ev in weekPositioned[di]"
               :key="ev.id"
@@ -379,6 +381,7 @@
           <label>地点</label>
           <select class="form-input" :value="editingEvent.location" @change="onLocationSelect">
             <option value="">（无地点）</option>
+            <option v-if="editingEvent.location && !locations.includes(editingEvent.location)" :value="editingEvent.location">📍 {{ editingEvent.location }}</option>
             <option v-for="loc in locations" :key="loc" :value="loc">{{ loc }}</option>
             <option value="__add__">➕ 新增地点…</option>
           </select>
