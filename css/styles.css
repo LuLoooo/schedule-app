@@ -1682,3 +1682,41 @@ textarea { resize: vertical; }
   margin: 0 0 16px;
 }
 .del-cat-name { font-weight: 700; }
+
+/* ==================== 常用地点 ==================== */
+.location-modal { max-width: 420px; }
+.loc-tip { font-size: 13px; color: var(--text-muted, #64748b); margin: 0 0 14px; line-height: 1.6; }
+.loc-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; max-height: 240px; overflow-y: auto; }
+.loc-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 8px; background: var(--bg-hover, #f8fafc);
+}
+.loc-dot { font-size: 14px; }
+.loc-name { flex: 1; font-size: 14px; color: var(--text, #1e293b); }
+.loc-del {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 4px 6px; border-radius: 6px;
+}
+.loc-del:hover { background: #fee2e2; }
+.loc-empty { font-size: 13px; color: var(--text-muted, #64748b); margin: 0 0 14px; }
+.loc-add { display: flex; gap: 8px; }
+.loc-add .form-input { flex: 1; }
+
+/* 编辑弹窗内：常用地点快捷标签 + 存为常用 */
+.loc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.loc-chip {
+  border: 1px solid var(--border-light, #e2e8f0);
+  background: var(--bg-hover, #f8fafc);
+  color: var(--text, #1e293b);
+  font-size: 12px; padding: 4px 10px; border-radius: 14px; cursor: pointer;
+  transition: all 0.15s;
+}
+.loc-chip:hover { border-color: var(--primary, #6366f1); }
+.loc-chip.active { background: var(--primary, #6366f1); color: #fff; border-color: var(--primary, #6366f1); }
+.loc-save-btn {
+  margin-top: 8px; border: 1px dashed var(--primary, #6366f1);
+  background: transparent; color: var(--primary, #6366f1);
+  font-size: 12px; padding: 4px 10px; border-radius: 14px; cursor: pointer;
+}
+.loc-save-btn:hover { background: rgba(99,102,241,0.08); }

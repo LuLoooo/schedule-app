@@ -388,6 +388,38 @@ const Storage = {
     }
   },
 
+  /**
+   * 读取常用地点列表（用户自定义，按账户隔离）。
+   * @param {string} [id] - 账户 id，省略则用 activeAccount
+   * @returns {string[]}
+   */
+  getLocations(id) {
+    try {
+      const data = localStorage.getItem(this.accountKey('locations', id));
+      const list = data ? JSON.parse(data) : null;
+      if (Array.isArray(list)) return list;
+    } catch (e) {}
+    return [];
+  },
+
+  /**
+   * 保存常用地点列表（自动去重、去空白）。
+   * @param {string[]} list
+   * @param {string} [id] - 账户 id，省略则用 activeAccount
+   */
+  saveLocations(list, id) {
+    const cleaned = Array.isArray(list)
+      ? [...new Set(list.map(x => (x || '').trim()).filter(Boolean))]
+      : [];
+    try {
+      localStorage.setItem(this.accountKey('locations', id), JSON.stringify(cleaned));
+      return true;
+    } catch (e) {
+      console.error('Failed to save locations:', e);
+      return false;
+    }
+  },
+
   // ==================== Import / Export ====================
 
   exportAllData() {

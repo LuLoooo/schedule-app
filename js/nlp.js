@@ -354,34 +354,36 @@ const NLP = {
       remainingText = remainingText.replace(kmMatch[0], '');
     }
 
-    // 提取地点
+    // 提取地点：优先用通用语义提取，失败再走原有拍摄专用规则
     let location = '';
-    const locPatterns = [
-      /去(?:了)?(.+?)(?:拍摄|拍照|拍外景|拍)/,
-      /到(.+?)(?:拍摄|拍照|拍外景|拍)/,
-      /在(.+?)(?:拍摄|拍照|拍外景|拍)/,
-      /从(.+?)(?:出发|到|去|来)/,
-      /去(?:了)?(.+?)[，,]/,
-      /到(.+?)[，,]/
-    ];
-
-    for (const pattern of locPatterns) {
-      const match = remainingText.match(pattern);
-      if (match && match[1]) {
-        location = match[1].trim();
-        // 清理地点中的多余词
-        location = location.replace(/^(了|过|到|在)\s*/, '');
-        // 去掉结尾的活动词（上班/开会/拍摄等），只保留地点
-        location = location.replace(/(上班|开会|拍摄|拍照|培训|出差|拜访|讨论|健身|锻炼|工作)$/g, '');
-        break;
+    const lr = this.extractLocation(remainingText);
+    if (lr.location) {
+      location = lr.location;
+      remainingText = lr.remaining;
+    } else {
+      const locPatterns = [
+        /去(?:了)?(.+?)(?:拍摄|拍照|拍外景|拍)/,
+        /到(.+?)(?:拍摄|拍照|拍外景|拍)/,
+        /在(.+?)(?:拍摄|拍照|拍外景|拍)/,
+        /从(.+?)(?:出发|到|去|来)/,
+        /去(?:了)?(.+?)[，,]/,
+        /到(.+?)[，,]/
+      ];
+      for (const pattern of locPatterns) {
+        const match = remainingText.match(pattern);
+        if (match && match[1]) {
+          location = match[1].trim()
+            .replace(/^(了|过|到|在)\s*/, '')
+            .replace(/(上班|开会|拍摄|拍照|培训|出差|拜访|讨论|健身|锻炼|工作)$/g, '');
+          break;
+        }
       }
-    }
-
-    // 如果没找到地点，尝试提取"拍摄"前的词
-    if (!location) {
-      const shootMatch = remainingText.match(/(.+?)拍摄/);
-      if (shootMatch) {
-        location = shootMatch[1].replace(/^(去|到|在|去了|到了|在)/, '').trim();
+      // 如果没找到地点，尝试提取"拍摄"前的词
+      if (!location) {
+        const shootMatch = remainingText.match(/(.+?)拍摄/);
+        if (shootMatch) {
+          location = shootMatch[1].replace(/^(去|到|在|去了|到了|在)/, '').trim();
+        }
       }
     }
 
@@ -883,20 +885,19 @@ const NLP = {
       return { location, remaining };
     }
 
-    // 在XXX开会/拍摄/拜访
-    const atMatch = remaining.match(/在(.+?)(?:开会|开会讨论|开会评审|拍摄|拍照|拜访|培训|讨论|见面|碰面)/);
-    if (atMatch) {
-      location = atMatch[1].trim();
-      remaining = remaining.replace(atMatch[0], atMatch[0].replace(atMatch[1], ''));
-      return { location, remaining };
-    }
-
-    // 去XXX出差/开会
-    const goMatch = remaining.match(/去(.+?)(?:出差|开会|拍摄|培训|拜访|讨论|见面|碰面)/);
-    if (goMatch) {
-      location = goMatch[1].trim();
-      remaining = remaining.replace(goMatch[0], goMatch[0].replace(goMatch[1], ''));
-      return { location, remaining };
+    // 介词 + 地点 +（活动词 / 时间词 / 标点）：在/到/去/从/往 X + 后续活动或时间
+    const ACT = '拍摄|拍照|拍外景|拍|开会|开会讨论|开会评审|培训|出差|拜访|讨论|见面|碰面|上班|下班|健身|锻炼|工作|吃饭|约会|取景|布光|剪辑|排版|学习|考试|出发|回来|返回|回家|飞|喝|唱|按摩|理发|逛街|逛|玩|购物|旅游|看电影|看|做|进行|跑步|运动';
+    const TIME = '上午|下午|晚上|早上|中午|傍晚|早晨|凌晨|明天|今天|后天|大后天|昨天|前天|周一|周二|周三|周四|周五|周六|周日|周几|周末|\\d+\\s*点|\\d+[:：]|点';
+    const p = new RegExp('(?:在|到|去|从|往|离)\\s*([^\\s，,；;。、]+?)(?=(?:' + ACT + '|' + TIME + '|[，,。；;、]|$))');
+    const m = remaining.match(p);
+    if (m && m[1] && !/^(了|过|这|那|这里|那里|这儿|那儿)$/.test(m[1])) {
+      const cand = m[1].trim();
+      // 兜底：若截取的整段本身就是某个活动词（如「健身」「吃饭」），则不算地点
+      if (!ACT.split('|').some(a => a && cand === a)) {
+        location = cand;
+        remaining = remaining.replace(m[0], m[0].replace(m[1], ''));
+        return { location, remaining };
+      }
     }
 
     return { location, remaining };

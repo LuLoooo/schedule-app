@@ -70,6 +70,14 @@ createApp({
       catForm: { name: '', color: '#6366f1', keywordsText: '', oldName: null },
       categoryError: '',
 
+      // 用户自定义常用地点（从 storage 读取，默认空）
+      locations: [],
+
+      // 常用地点管理弹窗
+      showLocationModal: false,
+      locForm: { name: '' },
+      locError: '',
+
       // 删除分类弹窗（让用户选择把该分类下的日程归到哪一类）
       showDeleteCategoryModal: false,
       deletingCategory: null,
@@ -513,6 +521,8 @@ createApp({
       // 加载本账户自定义分类并同步给 NLP（影响自动归类与标题归纳）
       this.categories = Storage.getCategories();
       if (window.NLP) NLP.setCategories(this.categories);
+      // 加载本账户常用地点
+      this.locations = Storage.getLocations();
     },
 
     // 账户头像颜色（按名称哈希取色板）
@@ -1111,6 +1121,41 @@ createApp({
       }
       if (count > 0) Storage.saveEvents(evs);
       return count;
+    },
+
+    // ==================== 常用地点管理 ====================
+
+    openLocationModal() {
+      this.locForm = { name: '' };
+      this.locError = '';
+      this.showLocationModal = true;
+    },
+
+    addLocation() {
+      const v = (this.locForm.name || '').trim();
+      if (!v) { this.locError = '请输入地点名称'; return; }
+      if (this.locations.includes(v)) { this.locError = '该地点已存在'; return; }
+      Storage.saveLocations([...this.locations, v]);
+      this.locations = Storage.getLocations();
+      this.locForm.name = '';
+      this.showToast('已添加常用地点', 'success');
+    },
+
+    deleteLocation(loc) {
+      if (!confirm(`从常用地点中删除「${loc}」？（不影响已有日程）`)) return;
+      Storage.saveLocations(this.locations.filter(x => x !== loc));
+      this.locations = Storage.getLocations();
+      this.showToast('已删除', 'success');
+    },
+
+    // 把当前编辑中的地点存入常用地点（去重）
+    addCurrentLocationToFrequent() {
+      const v = (this.editingEvent.location || '').trim();
+      if (!v) { this.showToast('请先填写地点', 'error'); return; }
+      if (this.locations.includes(v)) { this.showToast('已在常用地点中', 'info'); return; }
+      Storage.saveLocations([...this.locations, v]);
+      this.locations = Storage.getLocations();
+      this.showToast('已加入常用地点', 'success');
     },
 
     quickAddEvent(date, hour) {

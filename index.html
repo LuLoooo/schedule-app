@@ -137,6 +137,7 @@
         @click="currentCategoryFilter = c.key"
       >{{ c.label }}</button>
       <button class="cat-manage-btn" @click="openCategoryModal()" title="管理分类">⚙ 分类</button>
+      <button class="cat-manage-btn" @click="openLocationModal()" title="管理常用地点">📍 常用地点</button>
     </div>
 
     <!-- Day View -->
@@ -359,7 +360,27 @@
         </div>
         <div class="form-group">
           <label>地点</label>
-          <input type="text" v-model="editingEvent.location" placeholder="地点（可选）" class="form-input">
+          <input type="text" v-model="editingEvent.location" placeholder="地点（可选，可下拉选择常用地点）" class="form-input" list="frequent-locations">
+          <datalist id="frequent-locations">
+            <option v-for="loc in locations" :key="loc" :value="loc"></option>
+          </datalist>
+          <!-- 常用地点快捷选择 -->
+          <div class="loc-chips" v-if="locations.length">
+            <button
+              type="button"
+              v-for="loc in locations"
+              :key="loc"
+              class="loc-chip"
+              :class="{ active: editingEvent.location === loc }"
+              @click="editingEvent.location = loc"
+            >{{ loc }}</button>
+          </div>
+          <button
+            type="button"
+            class="loc-save-btn"
+            v-if="editingEvent.location && editingEvent.location.trim() && !locations.includes(editingEvent.location.trim())"
+            @click="addCurrentLocationToFrequent()"
+          >＋ 存为常用地点</button>
         </div>
         <div class="form-group">
           <label>分类</label>
@@ -671,6 +692,32 @@
           <button class="btn btn-danger" @click="confirmDeleteCategory()">确认删除</button>
           <button class="btn btn-ghost" @click="cancelDeleteCategory()">取消</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 常用地点管理弹窗 ==================== -->
+  <div v-if="showLocationModal" class="modal-overlay" @click.self="showLocationModal = false">
+    <div class="modal location-modal">
+      <div class="modal-header">
+        <h3>常用地点</h3>
+        <button class="modal-close" @click="showLocationModal = false">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="loc-tip">添加你常去的地点，之后记日程时就能一键选择或自动联想。</p>
+        <div class="loc-list" v-if="locations.length">
+          <div v-for="loc in locations" :key="loc" class="loc-item">
+            <span class="loc-dot">📍</span>
+            <span class="loc-name">{{ loc }}</span>
+            <button class="loc-del" @click="deleteLocation(loc)" title="删除">🗑</button>
+          </div>
+        </div>
+        <p v-else class="loc-empty">还没有常用地点，在下面添加一条吧。</p>
+        <div class="loc-add">
+          <input v-model="locForm.name" class="form-input" placeholder="地点名称，如：公司、外滩、星巴克" @keyup.enter="addLocation()" />
+          <button class="btn btn-primary" @click="addLocation()">+ 添加</button>
+        </div>
+        <p v-if="locError" class="login-error">{{ locError }}</p>
       </div>
     </div>
   </div>
